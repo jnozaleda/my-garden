@@ -52,3 +52,7 @@ npx wrangler deploy                       # publicar
 npx wrangler secret put ACCESS_CODE       # cambiar el código de acceso
 echo 'ACCESS_CODE=local-test' > .dev.vars && npx wrangler dev --port 8788   # probar en local
 ```
+
+## Backlog (ideas aparcadas)
+
+- **Separar «Nombre» y «Tipo de planta» en el formulario.** El nombre es libre («Olivo del patio»); el tipo («olivo») es lo que se consulta a la IA y la clave de la memoria compartida del Worker. Así se aprovecha mejor la memoria y las respuestas son más precisas. Idea: autocompletar el tipo con las plantas que ya están en memoria. Aparcado el 2026-09-29: primero, pruebas de uso.
