@@ -221,10 +221,18 @@ function plantForm(id) {
       <label class="check"><input type="checkbox" name="rainReaches" ${p.rainReaches ? "checked" : ""} /><span>Le llega la lluvia<small>Si llueve, te diremos que no hace falta regar.</small></span></label>
       <label class="check"><input type="checkbox" name="inPot" ${p.inPot ? "checked" : ""} /><span>Está en maceta<small>Se seca antes con calor y sufre con el viento.</small></span></label>
       <label class="check"><input type="checkbox" name="frostSensitive" ${p.frostSensitive ? "checked" : ""} /><span>Sensible a heladas<small>Te avisaremos para protegerla.</small></span></label>
-      <label class="field">Notas<textarea name="notes" rows="6" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
+      <label class="field">Notas<textarea name="notes" class="autogrow" rows="6" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
       <button class="btn block" type="submit">Guardar</button>
     </form>`);
   $("plantForm").dataset.id = id ?? "";
+  autogrow($("plantForm").elements.notes);
+}
+
+// Notes box grows with its text so a whole paragraph is readable without scrolling inside it.
+function autogrow(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight + 2}px`;
 }
 
 // Photos are shrunk to 640px JPEG so dozens of plants fit in localStorage.
@@ -318,6 +326,7 @@ async function aiFill() {
     f.feedEvery.value = care.feedEvery || "";
     f.frostSensitive.checked = care.frostSensitive;
     if (!f.notes.value.trim()) f.notes.value = care.notes;
+    autogrow(f.notes);
     show(care.confidence === "baja"
       ? `⚠️ No está seguro de qué planta es «${name}». Revisa los datos o prueba con otro nombre.`
       : `✨ Propuesta para ${care.commonName} en ${loc.name} este mes. Revisa y guarda.`, care.confidence === "baja" ? "warn" : "ok");
@@ -409,6 +418,10 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("#placeBtn")) return placeSheet();
   const el = e.target.closest("[data-action]");
   if (el && actions[el.dataset.action]) { e.preventDefault(); actions[el.dataset.action](el.dataset); }
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.classList?.contains("autogrow")) autogrow(e.target);
 });
 
 document.addEventListener("change", async (e) => {

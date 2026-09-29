@@ -164,3 +164,6 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, 0.35); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
 .btn[aria-busy="true"] { opacity: 1; background: var(--accent-soft); color: var(--accent); }
+
+/* Notes: grows with its text (see autogrow in app.js) */
+.field textarea.autogrow { min-height: 9em; line-height: 1.45; resize: none; overflow: hidden; }
