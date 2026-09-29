@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Mi Jardín</title>
+  <meta name="description" content="Inventario de tus plantas, sus cuidados y avisos según el tiempo." />
+  <meta name="theme-color" content="#f2f2f5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Mi Jardín" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="top-row">
+      <h1>Mi Jardín</h1>
+      <button class="place" id="placeBtn" type="button" aria-label="Cambiar ubicación"></button>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="today">Hoy</button>
+      <button type="button" role="tab" data-tab="plants">Plantas</button>
+      <button type="button" role="tab" data-tab="more">Ajustes</button>
+    </nav>
+  </header>
+
+  <main id="main" aria-live="polite"></main>
+
+  <dialog id="sheet"></dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
