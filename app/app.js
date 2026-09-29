@@ -6,6 +6,8 @@ import { CARE, dueTasks, weatherAlerts, nextDue, daysBetween } from "./rules.js"
 import { buildICS } from "./calendar.js";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
+// Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
+const API = "https://my-garden-api.tempcheck-app.workers.dev";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -129,6 +131,15 @@ function moreView() {
       <p class="muted">La previsión y los avisos son para <strong>${esc(loc.name)}</strong>.</p>
       <div class="row" style="margin-top:10px"><button class="btn small" data-action="locate">📍 Usar mi ubicación</button><button class="btn small secondary" data-action="open-place">Buscar ciudad</button></div>
     </section>
+    <section class="card"><h2>Asistente IA</h2>
+      <p class="muted">${store.get("mj_ai_code", "")
+        ? "Activado: al añadir una planta, pulsa ✨ Rellenar con IA y propondrá sus cuidados."
+        : "Escribe tu código de acceso para que ✨ Rellenar con IA proponga los cuidados de cada planta."}</p>
+      <form id="aiCodeForm" class="row" style="margin-top:10px">
+        <input type="password" name="code" class="code-input" placeholder="Código de acceso" autocomplete="off" value="${esc(store.get("mj_ai_code", ""))}" />
+        <button class="btn small" type="submit">Guardar</button>
+      </form>
+    </section>
     <section class="card"><h2>Calendario</h2>
       <p class="muted">Añade los riegos y abonados a tu calendario (Apple, Google u Outlook) como eventos que se repiten. Si cambias los intervalos o registras cuidados, vuelve a exportarlo.</p>
       <div class="row" style="margin-top:10px"><button class="btn small" data-action="export-ics" ${state.data.plants.length ? "" : "disabled"}>📅 Exportar al calendario</button></div>
@@ -198,6 +209,8 @@ function plantForm(id) {
       <div class="photo-pick"><span id="photoPreview">${draftPhoto ? `<img src="${draftPhoto}" alt="" />` : `<span class="thumb">📷</span>`}</span>
         <label class="btn small secondary">Foto<input type="file" id="photoInput" accept="image/*" hidden /></label></div>
       <label class="field">Nombre<input name="name" required placeholder="Limonero del patio" value="${esc(p.name)}" /></label>
+      <button type="button" class="btn secondary" data-action="ai-fill">✨ Rellenar con IA</button>
+      <p class="ai-status" id="aiStatus" hidden></p>
       <label class="field">Especie (opcional)<input name="species" placeholder="Citrus limon" value="${esc(p.species)}" /></label>
       <label class="field">Zona<input name="zone" list="zoneList" placeholder="Terraza sur" value="${esc(p.zone)}" /><datalist id="zoneList">${zones.map((z) => `<option value="${esc(z)}">`).join("")}</datalist></label>
       <div class="two">
@@ -265,6 +278,51 @@ function download(name, text, type) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+// ---------- AI fill ----------
+// Asks the backend for this plant's care sheet (for the current place and month) and fills the
+// form. Nothing is saved until the user reviews it and taps Guardar.
+const AI_ERRORS = {
+  code: "Código de acceso incorrecto o sin poner: revísalo en Ajustes.",
+  limit: "Se ha alcanzado el límite de hoy. Rellénalo a mano o prueba mañana.",
+};
+
+async function aiFill() {
+  const form = $("plantForm");
+  const status = $("aiStatus");
+  const show = (text, kind = "") => { status.hidden = false; status.className = `ai-status ${kind}`; status.textContent = text; };
+  const name = form.elements.name.value.trim();
+  if (!name) { form.elements.name.focus(); return show("Escribe primero el nombre de la planta.", "warn"); }
+  const code = store.get("mj_ai_code", "");
+  if (!code) return show(AI_ERRORS.code, "warn");
+
+  const btn = form.querySelector('[data-action="ai-fill"]');
+  btn.disabled = true;
+  show("Consultando…");
+  const loc = state.loc ?? DEFAULT_LOC;
+  try {
+    const res = await fetch(`${API}/care`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Access-Code": code },
+      body: JSON.stringify({ name, lat: loc.lat, lon: loc.lon, place: loc.name, month: new Date().getMonth() + 1 }),
+    });
+    const care = await res.json();
+    if (!res.ok) return show(AI_ERRORS[care.error] ?? "El asistente no está disponible ahora. Rellénalo a mano.", "warn");
+    const f = form.elements;
+    f.species.value = care.species;
+    f.waterEvery.value = care.waterEvery;
+    f.feedEvery.value = care.feedEvery || "";
+    f.frostSensitive.checked = care.frostSensitive;
+    if (!f.notes.value.trim()) f.notes.value = care.notes;
+    show(care.confidence === "baja"
+      ? `⚠️ No está seguro de qué planta es «${name}». Revisa los datos o prueba con otro nombre.`
+      : `✨ Propuesta para ${care.commonName} en ${loc.name} este mes. Revisa y guarda.`, care.confidence === "baja" ? "warn" : "ok");
+  } catch {
+    show("Sin conexión con el asistente. Rellénalo a mano.", "warn");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Actions ----------
 function addLog(plantId, type, note = "") {
   state.data.log.push({ id: uid(), plantId, type, date: localToday(), note });
@@ -315,6 +373,7 @@ const actions = {
   "export-ics": () => download("mi-jardin.ics", buildICS(state.data.plants, state.data.log, localToday()), "text/calendar"),
   "export-json": () => download(`mi-jardin-${localToday()}.json`, JSON.stringify(state.data), "application/json"),
   "import-json": () => $("importFile").click(),
+  "ai-fill": aiFill,
 };
 
 document.addEventListener("click", (e) => {
@@ -342,6 +401,12 @@ document.addEventListener("change", async (e) => {
 });
 
 document.addEventListener("submit", (e) => {
+  if (e.target.id === "aiCodeForm") {
+    e.preventDefault();
+    store.set("mj_ai_code", new FormData(e.target).get("code").trim());
+    render();
+    return;
+  }
   if (e.target.id !== "plantForm") return;
   e.preventDefault();
   const f = new FormData(e.target);

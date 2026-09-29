@@ -147,3 +147,10 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, 0.35); }
 
 .results button { display: block; width: 100%; text-align: left; padding: 10px 0; border-top: 0.5px solid var(--hairline); }
 .results small { color: var(--text-2); }
+
+/* AI assistant */
+.ai-status { font-size: 14px; line-height: 1.4; padding: 8px 12px; border-radius: 10px; background: var(--track); color: var(--text-2); margin: 0; }
+.ai-status.ok { background: var(--accent-soft); color: var(--accent); }
+.ai-status.warn { background: var(--warn-soft); color: var(--warn); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.code-input { flex: 1; min-width: 0; background: var(--card); border: 0.5px solid var(--hairline); border-radius: 10px; padding: 6px 10px; font-size: 16px; }

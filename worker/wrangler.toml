@@ -1,0 +1,24 @@
+name = "my-garden-api"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+[observability]
+enabled = true
+
+# Workers AI (free daily allocation). Used while PROVIDER = "workers-ai".
+[ai]
+binding = "AI"
+
+# Per-species answers (90 days) and the daily call counter.
+[[kv_namespaces]]
+binding = "CACHE"
+id = "81322824fdd74edea7300bb086625d7c"
+
+[vars]
+ALLOWED_ORIGINS = "https://jnozaleda.github.io,http://localhost:8767"
+PROVIDER = "workers-ai"
+MODEL = "@cf/qwen/qwen3.8-27b"  # best of the free-plan models tested 2026-09-29 (Gemma 4, Llama 3.3 70B, Qwen)
+DAILY_LIMIT = "30"
+# THINKING = "on" turns on the model's reasoning; in tests it was slower and no better.
+
+# Secret, set once with `npx wrangler secret put ACCESS_CODE` (local dev: .dev.vars).
