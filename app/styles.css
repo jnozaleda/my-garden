@@ -154,3 +154,13 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, 0.35); }
 .ai-status.warn { background: var(--warn-soft); color: var(--warn); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .code-input { flex: 1; min-width: 0; background: var(--card); border: 0.5px solid var(--hairline); border-radius: 10px; padding: 6px 10px; font-size: 16px; }
+
+/* Loading spinner (AI fill) */
+.spinner {
+  display: inline-block; width: 1em; height: 1em; vertical-align: -0.15em; margin-right: 6px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+.btn[aria-busy="true"] { opacity: 1; background: var(--accent-soft); color: var(--accent); }

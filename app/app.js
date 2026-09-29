@@ -297,12 +297,16 @@ async function aiFill() {
   if (!code) return show(AI_ERRORS.code, "warn");
 
   const btn = form.querySelector('[data-action="ai-fill"]');
+  const label = btn.innerHTML;
   btn.disabled = true;
-  show("Consultando…");
+  btn.setAttribute("aria-busy", "true");
+  btn.innerHTML = `<span class="spinner" aria-hidden="true"></span> Preparando la ficha…`;
+  show(`Buscando los cuidados de «${name}». Tarda unos segundos.`);
   const loc = state.loc ?? DEFAULT_LOC;
   try {
     const res = await fetch(`${API}/care`, {
       method: "POST",
+      signal: AbortSignal.timeout(30000),
       headers: { "Content-Type": "application/json", "X-Access-Code": code },
       body: JSON.stringify({ name, lat: loc.lat, lon: loc.lon, place: loc.name, month: new Date().getMonth() + 1 }),
     });
@@ -317,10 +321,14 @@ async function aiFill() {
     show(care.confidence === "baja"
       ? `⚠️ No está seguro de qué planta es «${name}». Revisa los datos o prueba con otro nombre.`
       : `✨ Propuesta para ${care.commonName} en ${loc.name} este mes. Revisa y guarda.`, care.confidence === "baja" ? "warn" : "ok");
-  } catch {
-    show("Sin conexión con el asistente. Rellénalo a mano.", "warn");
+  } catch (err) {
+    show(err?.name === "TimeoutError"
+      ? "El asistente está tardando demasiado. Vuelve a intentarlo en un rato o rellénalo a mano."
+      : "Sin conexión con el asistente. Rellénalo a mano.", "warn");
   } finally {
     btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    btn.innerHTML = label;
   }
 }
 
