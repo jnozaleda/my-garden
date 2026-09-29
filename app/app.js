@@ -132,13 +132,14 @@ function moreView() {
       <div class="row" style="margin-top:10px"><button class="btn small" data-action="locate">📍 Usar mi ubicación</button><button class="btn small secondary" data-action="open-place">Buscar ciudad</button></div>
     </section>
     <section class="card"><h2>Asistente IA</h2>
-      <p class="muted">${store.get("mj_ai_code", "")
+      <p class="muted">${store.get("mj_ai_code", "") && codeStatus?.kind !== "warn"
         ? "Activado: al añadir una planta, pulsa ✨ Rellenar con IA y propondrá sus cuidados."
         : "Escribe tu código de acceso para que ✨ Rellenar con IA proponga los cuidados de cada planta."}</p>
       <form id="aiCodeForm" class="row" style="margin-top:10px">
-        <input type="password" name="code" class="code-input" placeholder="Código de acceso" autocomplete="off" value="${esc(store.get("mj_ai_code", ""))}" />
+        <input type="text" name="code" class="code-input" placeholder="Código de acceso" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(store.get("mj_ai_code", ""))}" />
         <button class="btn small" type="submit">Guardar</button>
       </form>
+      ${codeStatus ? `<p class="ai-status ${codeStatus.kind}" style="margin-top:10px">${esc(codeStatus.text)}</p>` : ""}
     </section>
     <section class="card"><h2>Calendario</h2>
       <p class="muted">Añade los riegos y abonados a tu calendario (Apple, Google u Outlook) como eventos que se repiten. Si cambias los intervalos o registras cuidados, vuelve a exportarlo.</p>
@@ -323,6 +324,24 @@ async function aiFill() {
   }
 }
 
+// Saving the access code checks it against the backend so the user sees at once whether it works.
+let codeStatus = null;
+async function saveCode(code) {
+  store.set("mj_ai_code", code);
+  if (!code) { codeStatus = { kind: "warn", text: "Escribe o pega el código antes de guardar." }; return render(); }
+  codeStatus = { kind: "", text: "Comprobando…" };
+  render();
+  try {
+    const res = await fetch(`${API}/check`, { headers: { "X-Access-Code": code } });
+    codeStatus = res.ok
+      ? { kind: "ok", text: "✅ Código correcto. Ya puedes usar ✨ Rellenar con IA." }
+      : { kind: "warn", text: "❌ Código incorrecto. Revisa que esté completo, sin espacios." };
+  } catch {
+    codeStatus = { kind: "warn", text: "Guardado, pero no se ha podido comprobar: sin conexión." };
+  }
+  render();
+}
+
 // ---------- Actions ----------
 function addLog(plantId, type, note = "") {
   state.data.log.push({ id: uid(), plantId, type, date: localToday(), note });
@@ -403,8 +422,7 @@ document.addEventListener("change", async (e) => {
 document.addEventListener("submit", (e) => {
   if (e.target.id === "aiCodeForm") {
     e.preventDefault();
-    store.set("mj_ai_code", new FormData(e.target).get("code").trim());
-    render();
+    saveCode(new FormData(e.target).get("code").trim());
     return;
   }
   if (e.target.id !== "plantForm") return;

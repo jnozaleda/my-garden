@@ -106,8 +106,10 @@ const json = (body, status, headers) => new Response(JSON.stringify(body), { sta
 const normName = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
 const season = (month, lat) => Math.floor(((month + (lat < 0 ? 6 : 0)) % 12) / 3); // 0 winter … 3 autumn (north)
 
+const authorized = (request, env) => Boolean(env.ACCESS_CODE) && request.headers.get("X-Access-Code") === env.ACCESS_CODE;
+
 async function handleCare(request, env, headers) {
-  if (!env.ACCESS_CODE || request.headers.get("X-Access-Code") !== env.ACCESS_CODE) {
+  if (!authorized(request, env)) {
     return json({ error: "code" }, 401, headers);
   }
   let body;
@@ -149,6 +151,7 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
     const { pathname } = new URL(request.url);
     if (pathname === "/health") return json({ ok: true, provider: env.PROVIDER }, 200, headers);
+    if (pathname === "/check") return json({ ok: authorized(request, env) }, authorized(request, env) ? 200 : 401, headers);
     if (pathname === "/care" && request.method === "POST") return handleCare(request, env, headers);
     return json({ error: "not_found" }, 404, headers);
   },
