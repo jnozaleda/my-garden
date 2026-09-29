@@ -111,7 +111,7 @@ function plantsView() {
   if (!plants.length) return emptyGarden();
   const today = localToday();
   const zones = [...new Set(plants.map((p) => p.zone || "Sin zona"))].sort((a, b) => a.localeCompare(b, "es"));
-  let html = `<div class="row"><button class="btn" data-action="new-plant">+ Añadir planta</button></div>`;
+  let html = "";
   for (const zone of zones) {
     const list = plants.filter((p) => (p.zone || "Sin zona") === zone).sort((a, b) => a.name.localeCompare(b.name, "es"));
     html += `<div class="zone-title">${esc(zone)} · ${list.length}</div><section class="card">` + list.map((p) => {
@@ -160,13 +160,18 @@ function moreView() {
 function render() {
   const loc = state.loc ?? DEFAULT_LOC;
   $("placeBtn").textContent = `📍 ${loc.name}`;
-  document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
+  document.querySelectorAll(".tabbar button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
+  $("fab").hidden = state.tab === "more";
   $("main").innerHTML = state.tab === "plants" ? plantsView() : state.tab === "more" ? moreView() : todayView();
 }
 
 // ---------- Sheets ----------
 const sheet = $("sheet");
-function openSheet(html) { sheet.innerHTML = `<div class="sheet-in">${html}</div>`; if (!sheet.open) sheet.showModal(); }
+function openSheet(html) {
+  delete sheet.dataset.plant;
+  sheet.innerHTML = `<div class="sheet-in">${html}</div>`;
+  if (!sheet.open) sheet.showModal();
+}
 function closeSheet() { sheet.close(); }
 sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); });
 
@@ -197,6 +202,7 @@ function plantSheet(id) {
       <li><span class="d">${fmtDate(e.date)}</span><span>${CARE[e.type]?.icon ?? ""} ${esc(CARE[e.type]?.done ?? e.type)}${e.note ? ` — ${esc(e.note)}` : ""}</span>
       <button class="x" data-action="del-log" data-log="${e.id}" data-id="${p.id}" aria-label="Borrar">✕</button></li>`).join("")}</ul>` : `<p class="muted">Sin registros todavía.</p>`}</section>
     <div class="row"><button class="btn secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn danger" data-action="del-plant" data-id="${p.id}">Eliminar</button></div>`);
+  sheet.dataset.plant = id;
 }
 
 let draftPhoto = null;
@@ -295,14 +301,40 @@ const AI_ERRORS = {
   limit: "Se ha alcanzado el límite de hoy. Rellénalo a mano o prueba mañana.",
 };
 
+// Resolves to the care sheet, or throws an Error whose message is a key of AI_ERRORS
+// ("code", "limit") or "timeout" / "network" / "ai".
+async function requestCare(name) {
+  const code = store.get("mj_ai_code", "");
+  if (!code) throw new Error("code");
+  const loc = state.loc ?? DEFAULT_LOC;
+  let res;
+  try {
+    res = await fetch(`${API}/care`, {
+      method: "POST",
+      signal: AbortSignal.timeout(30000),
+      headers: { "Content-Type": "application/json", "X-Access-Code": code },
+      body: JSON.stringify({ name, lat: loc.lat, lon: loc.lon, place: loc.name, month: new Date().getMonth() + 1 }),
+    });
+  } catch (err) {
+    throw new Error(err?.name === "TimeoutError" ? "timeout" : "network");
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error in AI_ERRORS ? body.error : "ai");
+  return body;
+}
+
+const aiErrorText = (key) => AI_ERRORS[key] ?? {
+  timeout: "El asistente está tardando demasiado. Vuelve a intentarlo en un rato o rellénalo a mano.",
+  network: "Sin conexión con el asistente. Rellénalo a mano.",
+}[key] ?? "El asistente no está disponible ahora. Rellénalo a mano.";
+
 async function aiFill() {
   const form = $("plantForm");
   const status = $("aiStatus");
   const show = (text, kind = "") => { status.hidden = false; status.className = `ai-status ${kind}`; status.textContent = text; };
   const name = form.elements.name.value.trim();
   if (!name) { form.elements.name.focus(); return show("Escribe primero el nombre de la planta.", "warn"); }
-  const code = store.get("mj_ai_code", "");
-  if (!code) return show(AI_ERRORS.code, "warn");
+  if (!store.get("mj_ai_code", "")) return show(AI_ERRORS.code, "warn");
 
   const btn = form.querySelector('[data-action="ai-fill"]');
   const label = btn.innerHTML;
@@ -312,14 +344,7 @@ async function aiFill() {
   show(`Buscando los cuidados de «${name}». Tarda unos segundos.`);
   const loc = state.loc ?? DEFAULT_LOC;
   try {
-    const res = await fetch(`${API}/care`, {
-      method: "POST",
-      signal: AbortSignal.timeout(30000),
-      headers: { "Content-Type": "application/json", "X-Access-Code": code },
-      body: JSON.stringify({ name, lat: loc.lat, lon: loc.lon, place: loc.name, month: new Date().getMonth() + 1 }),
-    });
-    const care = await res.json();
-    if (!res.ok) return show(AI_ERRORS[care.error] ?? "El asistente no está disponible ahora. Rellénalo a mano.", "warn");
+    const care = await requestCare(name);
     const f = form.elements;
     f.species.value = care.species;
     f.waterEvery.value = care.waterEvery;
@@ -331,14 +356,125 @@ async function aiFill() {
       ? `⚠️ No está seguro de qué planta es «${name}». Revisa los datos o prueba con otro nombre.`
       : `✨ Propuesta para ${care.commonName} en ${loc.name} este mes. Revisa y guarda.`, care.confidence === "baja" ? "warn" : "ok");
   } catch (err) {
-    show(err?.name === "TimeoutError"
-      ? "El asistente está tardando demasiado. Vuelve a intentarlo en un rato o rellénalo a mano."
-      : "Sin conexión con el asistente. Rellénalo a mano.", "warn");
+    show(aiErrorText(err.message), "warn");
   } finally {
     btn.disabled = false;
     btn.removeAttribute("aria-busy");
     btn.innerHTML = label;
   }
+}
+
+// ---------- New plant: two steps ----------
+// Step 1 asks what the plant is (and starts the AI lookup); step 2 asks where it lives, with big
+// toggles pre-set from the last plant added. Editing an existing plant keeps the full form.
+let wiz = null;
+const PLACE_DEFAULTS = { zone: "", inPot: true, rainReaches: true };
+
+function newPlantWizard() {
+  draftPhoto = null;
+  wiz = {
+    step: 1, name: "", ai: "idle", aiError: "", care: null, touched: {},
+    ...PLACE_DEFAULTS, ...store.get("mj_last_place", {}),
+    species: "", waterEvery: 3, feedEvery: 30, frostSensitive: false, notes: "", newZone: false,
+  };
+  renderWizard();
+}
+
+function renderWizard() {
+  if (!wiz) return;
+  const head = (right) => `<div class="sheet-head"><h2>Nueva planta</h2><div class="row"><span class="muted">${wiz.step} de 2</span>${right}</div></div>`;
+  if (wiz.step === 1) {
+    const hasCode = Boolean(store.get("mj_ai_code", ""));
+    openSheet(`
+      ${head(`<button class="btn small secondary" data-action="close">Cancelar</button>`)}
+      <form id="wizName" class="sheet-in" style="padding:0">
+        <h3 class="q">¿Qué planta es?</h3>
+        <input name="name" class="big-input" required placeholder="Olivo, limonero, geranio…" autocomplete="off" value="${esc(wiz.name)}" />
+        <div class="photo-pick"><span id="photoPreview">${draftPhoto ? `<img src="${draftPhoto}" alt="" />` : `<span class="thumb">📷</span>`}</span>
+          <label class="btn small secondary">Añadir foto<input type="file" id="photoInput" accept="image/*" hidden /></label></div>
+        <p class="muted">${hasCode ? "✨ Con el nombre, la IA propondrá sus cuidados para tu zona y este mes." : "Activa el asistente IA en Ajustes para que proponga los cuidados."}</p>
+        <button class="btn block" type="submit">Siguiente</button>
+      </form>`);
+    setTimeout(() => $("wizName")?.elements.name.focus(), 50);
+    return;
+  }
+  const zones = [...new Set([...state.data.plants.map((p) => p.zone), wiz.zone].filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+  const choice = (key, value, icon, label) =>
+    `<button type="button" class="choice ${wiz[key] === value ? "on" : ""}" data-action="wiz-set" data-key="${key}" data-value="${value}" aria-pressed="${wiz[key] === value}"><span class="ico">${icon}</span>${label}</button>`;
+  const aiCard = {
+    loading: `<span class="spinner" aria-hidden="true"></span><span class="muted">Buscando los cuidados de «${esc(wiz.name)}»…</span>`,
+    done: `<span class="muted">${esc([wiz.species, `regar cada ${wiz.waterEvery} d`, wiz.feedEvery ? `abonar cada ${wiz.feedEvery} d` : "sin abonar ahora"].filter(Boolean).join(" · "))}</span>`,
+    error: `<span class="muted">${esc(wiz.aiError)}</span>`,
+    idle: `<span class="muted">Cuidados a mano: ajústalos abajo.</span>`,
+  }[wiz.ai];
+  openSheet(`
+    ${head(`<button class="btn small secondary" data-action="wiz-back">Atrás</button>`)}
+    <section class="card ai-card ${wiz.ai}" id="wizStep2">
+      ${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb">🪴</span>`}
+      <div class="body"><div class="name">${esc(wiz.name)} ${wiz.ai === "done" ? "✨" : ""}</div>${aiCard}</div>
+    </section>
+    ${wiz.care?.confidence === "baja" ? `<p class="ai-status warn">⚠️ La IA no está segura de qué planta es. Revisa los días o vuelve atrás y prueba con otro nombre.</p>` : ""}
+    <h3 class="q">¿Dónde está?</h3>
+    <div class="chips">
+      ${zones.map((z) => `<button type="button" class="chip ${!wiz.newZone && wiz.zone === z ? "on" : ""}" data-action="wiz-zone" data-zone="${esc(z)}">${esc(z)}</button>`).join("")}
+      <button type="button" class="chip ${wiz.newZone ? "on" : ""}" data-action="wiz-new-zone">+ Nueva zona</button>
+    </div>
+    ${wiz.newZone ? `<input id="wizZone" class="big-input" placeholder="Terraza sur, jardín delantero…" autocomplete="off" value="${esc(wiz.zone)}" />` : ""}
+    <div class="choices">${choice("inPot", true, "🪴", "Maceta")}${choice("inPot", false, "🌱", "Suelo")}</div>
+    <div class="choices">${choice("rainReaches", true, "🌧️", "Le llueve")}${choice("rainReaches", false, "☂️", "A cubierto")}</div>
+    <div class="choices one">${choice("frostSensitive", true, "❄️", `Sensible a heladas: ${wiz.frostSensitive ? "sí" : "no"}`)}</div>
+    <div class="two">
+      <label class="field">Regar cada (días)<input id="wizWater" type="number" min="0" max="90" inputmode="numeric" value="${wiz.waterEvery || ""}" /></label>
+      <label class="field">Abonar cada (días)<input id="wizFeed" type="number" min="0" max="365" inputmode="numeric" value="${wiz.feedEvery || ""}" /></label>
+    </div>
+    ${store.get("mj_last_place", null) ? `<p class="muted small">Zona y opciones como en la última planta que añadiste.</p>` : ""}
+    <button class="btn block" data-action="wiz-save">Guardar planta</button>`);
+  if (wiz.newZone) setTimeout(() => $("wizZone")?.focus(), 50);
+}
+
+async function wizLookup() {
+  const current = wiz;
+  current.ai = "loading";
+  renderWizard();
+  try {
+    const care = await requestCare(current.name);
+    current.care = care;
+    current.ai = "done";
+    current.species = care.species;
+    if (!current.touched.waterEvery) current.waterEvery = care.waterEvery;
+    if (!current.touched.feedEvery) current.feedEvery = care.feedEvery;
+    if (!current.touched.frostSensitive) current.frostSensitive = care.frostSensitive;
+    current.notes = care.notes;
+  } catch (err) {
+    current.ai = "error";
+    current.aiError = aiErrorText(err.message);
+  }
+  // Saved before the answer arrived: complete that plant with whatever the user didn't set.
+  const saved = current.savedId && plantById(current.savedId);
+  if (saved && current.care) {
+    Object.assign(saved, { species: current.species, notes: current.notes, waterEvery: current.waterEvery, feedEvery: current.feedEvery, frostSensitive: current.frostSensitive });
+    save();
+    render();
+    if (sheet.open && sheet.dataset.plant === saved.id) plantSheet(saved.id);
+    return;
+  }
+  // Redraw only if this draft's step 2 is still what the sheet shows.
+  if (wiz === current && $("wizStep2")) renderWizard();
+}
+
+function wizSave() {
+  const zone = wiz.zone.trim();
+  const plant = {
+    id: uid(), created: localToday(), name: wiz.name, species: wiz.species, zone,
+    waterEvery: wiz.waterEvery, feedEvery: wiz.feedEvery, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
+    frostSensitive: wiz.frostSensitive, notes: wiz.notes, photo: draftPhoto,
+  };
+  store.set("mj_last_place", { zone, inPot: wiz.inPot, rainReaches: wiz.rainReaches });
+  state.data.plants.push(plant);
+  wiz.savedId = plant.id;
+  save();
+  render();
+  plantSheet(plant.id);
 }
 
 // Saving the access code checks it against the backend so the user sees at once whether it works.
@@ -366,7 +502,16 @@ function addLog(plantId, type, note = "") {
 }
 
 const actions = {
-  "new-plant": () => plantForm(null),
+  "new-plant": newPlantWizard,
+  "wiz-back": () => { wiz.step = 1; renderWizard(); },
+  "wiz-zone": (d) => { wiz.zone = d.zone; wiz.newZone = false; renderWizard(); },
+  "wiz-new-zone": () => { wiz.newZone = true; wiz.zone = ""; renderWizard(); },
+  "wiz-set": (d) => {
+    wiz[d.key] = d.key === "frostSensitive" ? !wiz.frostSensitive : d.value === "true";
+    wiz.touched[d.key] = true;
+    renderWizard();
+  },
+  "wiz-save": wizSave,
   "edit-plant": (d) => plantForm(d.id),
   "open-plant": (d) => plantSheet(d.id),
   close: closeSheet,
@@ -413,7 +558,7 @@ const actions = {
 };
 
 document.addEventListener("click", (e) => {
-  const tab = e.target.closest(".tabs button");
+  const tab = e.target.closest(".tabbar button");
   if (tab) { state.tab = tab.dataset.tab; store.set("mj_tab", state.tab); render(); return; }
   if (e.target.closest("#placeBtn")) return placeSheet();
   const el = e.target.closest("[data-action]");
@@ -422,6 +567,10 @@ document.addEventListener("click", (e) => {
 
 document.addEventListener("input", (e) => {
   if (e.target.classList?.contains("autogrow")) autogrow(e.target);
+  if (!wiz) return;
+  if (e.target.id === "wizZone") wiz.zone = e.target.value;
+  if (e.target.id === "wizWater") { wiz.waterEvery = Math.max(0, parseInt(e.target.value, 10) || 0); wiz.touched.waterEvery = true; }
+  if (e.target.id === "wizFeed") { wiz.feedEvery = Math.max(0, parseInt(e.target.value, 10) || 0); wiz.touched.feedEvery = true; }
 });
 
 document.addEventListener("change", async (e) => {
@@ -444,6 +593,21 @@ document.addEventListener("submit", (e) => {
   if (e.target.id === "aiCodeForm") {
     e.preventDefault();
     saveCode(new FormData(e.target).get("code").trim());
+    return;
+  }
+  if (e.target.id === "wizName") {
+    e.preventDefault();
+    const name = new FormData(e.target).get("name").trim();
+    if (!name) return;
+    const changed = name !== wiz.name;
+    wiz.name = name;
+    wiz.step = 2;
+    if (changed || wiz.ai === "error") {
+      wiz.care = null;
+      if (store.get("mj_ai_code", "")) return wizLookup();
+      wiz.ai = "idle";
+    }
+    renderWizard();
     return;
   }
   if (e.target.id !== "plantForm") return;
