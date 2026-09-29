@@ -221,7 +221,7 @@ function plantForm(id) {
       <label class="check"><input type="checkbox" name="rainReaches" ${p.rainReaches ? "checked" : ""} /><span>Le llega la lluvia<small>Si llueve, te diremos que no hace falta regar.</small></span></label>
       <label class="check"><input type="checkbox" name="inPot" ${p.inPot ? "checked" : ""} /><span>Está en maceta<small>Se seca antes con calor y sufre con el viento.</small></span></label>
       <label class="check"><input type="checkbox" name="frostSensitive" ${p.frostSensitive ? "checked" : ""} /><span>Sensible a heladas<small>Te avisaremos para protegerla.</small></span></label>
-      <label class="field">Notas<textarea name="notes" rows="3" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
+      <label class="field">Notas<textarea name="notes" rows="6" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
       <button class="btn block" type="submit">Guardar</button>
     </form>`);
   $("plantForm").dataset.id = id ?? "";

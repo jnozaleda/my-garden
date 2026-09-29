@@ -9,6 +9,7 @@ const CACHE_TTL = 90 * 86400; // a season: the answer depends on it
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 // The shape the app's form expects. Kept flat and small so modest models fill it reliably.
+// No maxLength on notes: constrained decoding would cut the text mid-sentence (clipSentences trims instead).
 const CARE_SCHEMA = {
   type: "object",
   properties: {
@@ -17,7 +18,7 @@ const CARE_SCHEMA = {
     waterEvery: { type: "integer", minimum: 1, maximum: 60, description: "Días entre riegos ahora, en exterior y en maceta mediana, para ese clima y estación" },
     feedEvery: { type: "integer", minimum: 0, maximum: 365, description: "Días entre abonados ahora (en temporada suele ser 15–60); 0 si en esta estación no se abona" },
     frostSensitive: { type: "boolean", description: "Si sufre con temperaturas bajo 0 °C" },
-    notes: { type: "string", maxLength: 400, description: "Máximo 4 frases cortas sobre ESTA planta: luz, poda, plagas habituales y qué hacer este mes" },
+    notes: { type: "string", description: "Entre 2 y 4 frases cortas (menos de 350 caracteres) sobre ESTA planta: luz, poda, plagas habituales y qué hacer este mes" },
     confidence: { type: "string", enum: ["alta", "media", "baja"], description: "baja si el nombre es ambiguo o no reconoces la planta" },
   },
   required: ["commonName", "species", "waterEvery", "feedEvery", "frostSensitive", "notes", "confidence"],
@@ -122,7 +123,7 @@ async function handleCare(request, env, headers) {
   const place = String(body.place ?? "").slice(0, 60);
 
   // Same plant, same climate cell (~100 km) and season → same answer.
-  const cacheKey = `care:v1:${env.PROVIDER}:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}:${season(month, lat)}`;
+  const cacheKey = `care:v2:${env.PROVIDER}:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}:${season(month, lat)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) return json({ ...cached, cached: true }, 200, headers);
 
