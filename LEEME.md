@@ -3,6 +3,8 @@
 Inventario de plantas de jardín y terraza, registro de cuidados y avisos según el tiempo.
 Web instalable en el móvil (PWA), sin compilación: HTML + JS plano, como TempCheck.
 
+Publicada en https://jnozaleda.github.io/my-garden/app/ (GitHub Pages desde la raíz de `main`; el `index.html` de la raíz redirige a `app/`).
+
 ## Probar en local
 
 ```bash
