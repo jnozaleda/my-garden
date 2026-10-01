@@ -312,3 +312,14 @@ label.switch-row { cursor: pointer; }
 .sheet-head .row { flex-wrap: nowrap; }
 .sheet-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .delete-plant { margin-top: 12px; }
+
+/* Edit form header card, same look as the new-plant step 2 */
+.edit-card { align-items: center; }
+.thumb-pick { cursor: pointer; flex: none; position: relative; }
+.thumb-pick .thumb { width: 52px; height: 52px; }
+.thumb-pick::after { content: "📷"; position: absolute; right: -4px; bottom: -4px; font-size: 13px; background: var(--card); border-radius: 50%; padding: 1px 2px; }
+.name-input, .species-input { background: none; border: 0; border-bottom: 1px solid transparent; padding: 2px 0; width: 100%; color: var(--text); }
+.name-input { font-size: 17px; font-weight: 700; }
+.species-input { font-size: 14px; font-style: italic; color: var(--text-2); }
+.name-input:focus-visible, .species-input:focus-visible { outline: none; border-bottom-color: var(--accent); }
+.ai-btn { color: var(--ai); }

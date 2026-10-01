@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001h";
+import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001i";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261001h";
-import { buildICS } from "./calendar.js?v=20261001h";
+} from "./rules.js?v=20261001i";
+import { buildICS } from "./calendar.js?v=20261001i";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -171,11 +171,18 @@ const UPGRADES = [
     // Keeps a season table the user already shaped; replaces a missing or flat (all-year) one.
     apply: (plant, care) => { if (!hasSeasonalCare(plant)) plant.seasons = care.seasons; },
   },
+  {
+    version: 2,
+    label: "marcas ✦ de lo que propuso la IA",
+    // Only records the AI's proposal as a reference: no value changes. Fields that still match it get ✦.
+    // `retro`: asked after the fact, so differences aren't necessarily the user's edits.
+    apply: (plant, care) => { if (!plant.ai) plant.ai = { ...aiSnapshot(care), retro: true }; },
+  },
 ];
 const CARE_VERSION = UPGRADES.at(-1).version;
 const hasSeasonalCare = (p) => Boolean(p.seasons) && new Set(SEASONS.map((k) => `${p.seasons[k].water}/${p.seasons[k].feed}`)).size > 1;
-// Plants from before versioning: a varied season table means they already have version 1.
-const careVersionOf = (p) => p.careVersion ?? (hasSeasonalCare(p) ? 1 : 0);
+// Plants from before versioning: a varied season table means version 1; a stored AI proposal, version 2.
+const careVersionOf = (p) => Math.max(p.careVersion ?? (hasSeasonalCare(p) ? 1 : 0), p.ai ? 2 : 0);
 const missingUpgrades = (p) => UPGRADES.filter((u) => u.version > careVersionOf(p));
 
 let upgrade = null; // progress of the current "Actualizar fichas" run
@@ -223,8 +230,6 @@ async function upgradePlants() {
     try {
       const care = await requestCare(plant.name);
       for (const u of missingUpgrades(plant)) u.apply(plant, care);
-      const snap = aiSnapshot(care);
-      plant.ai = { ...snap, values: { ...plant.ai?.values, ...snap.values } };
       if (!plant.species) plant.species = care.species;
       if (!plant.notes) plant.notes = care.notes;
       plant.careVersion = CARE_VERSION;
@@ -302,7 +307,10 @@ function plantSheet(id) {
   }
   if (p.ai) {
     const changed = Object.keys(p.ai.values).filter((k) => !isAiValue(p, k)).length;
-    nexts.push(`<p class="muted small next-change"><span class="ai-mark">✦</span> Propuesto por la IA el ${fmtDate(p.ai.at, { day: "numeric", month: "long" })}${changed ? ` · ${changed === 1 ? "1 dato cambiado" : `${changed} datos cambiados`} por ti` : ""}.</p>`);
+    const diff = p.ai.retro
+      ? `${changed === 1 ? "1 dato distinto" : `${changed} datos distintos`} de su propuesta`
+      : `${changed === 1 ? "1 dato cambiado" : `${changed} datos cambiados`} por ti`;
+    nexts.push(`<p class="muted small next-change"><span class="ai-mark">✦</span> ${p.ai.retro ? "Revisado con la IA" : "Propuesto por la IA"} el ${fmtDate(p.ai.at, { day: "numeric", month: "long" })}${changed ? ` · ${diff}` : ""}.</p>`);
   }
   if (missingUpgrades(p).length) nexts.push(`<p class="muted small next-change">Ficha por actualizar: Ajustes → ✨ Actualizar fichas.</p>`);
   const traits = [
@@ -334,15 +342,22 @@ function plantForm(id) {
   openSheet(`
     <div class="sheet-head"><h2>${id ? "Editar planta" : "Nueva planta"}</h2><button class="btn small secondary" data-action="${id ? "open-plant" : "close"}" data-id="${id ?? ""}">Cancelar</button></div>
     <form id="plantForm" class="sheet-in" style="padding:0">
-      <div class="photo-pick"><span id="photoPreview">${draftPhoto ? `<img src="${draftPhoto}" alt="" />` : `<span class="thumb">📷</span>`}</span>
-        <label class="btn small secondary">Foto<input type="file" id="photoInput" accept="image/*" hidden /></label></div>
-      <label class="field">Nombre<input name="name" required placeholder="Limonero del patio" value="${esc(p.name)}" /></label>
-      <button type="button" class="btn secondary" data-action="ai-fill">✨ Rellenar con IA</button>
+      <section class="card ai-card edit-card ${p.ai ? "ai-halo done" : ""}" id="editCard">
+        <label class="thumb-pick" aria-label="Cambiar foto"><span id="photoPreview">${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb">🪴</span>`}</span><input type="file" id="photoInput" accept="image/*" hidden /></label>
+        <div class="body">
+          <input name="name" class="name-input" required placeholder="Nombre de la planta" value="${esc(p.name)}" aria-label="Nombre" />
+          <input name="species" class="species-input" placeholder="Especie (opcional)" value="${esc(p.species)}" aria-label="Especie" />
+          <span id="editAiLine">${p.ai ? `<span class="ai-pill">✦ ${p.ai.retro ? "Revisado con" : "Propuesto por"} la IA el ${fmtDate(p.ai.at)}</span>` : ""}</span>
+        </div>
+      </section>
+      <button type="button" class="btn secondary ai-btn" data-action="ai-fill">${p.ai ? "✦ Volver a consultar a la IA" : "✦ Rellenar con IA"}</button>
       <p class="ai-status" id="aiStatus" hidden></p>
-      <label class="field">Especie (opcional)<input name="species" placeholder="Citrus limon" value="${esc(p.species)}" /></label>
-      <label class="field">Zona<input name="zone" list="zoneList" placeholder="Terraza sur" value="${esc(p.zone)}" /><datalist id="zoneList">${zones.map((z) => `<option value="${esc(z)}">`).join("")}</datalist></label>
-      <div class="seg-label">Riego y abono</div>
-      ${seasonTable(p.seasons ?? legacySeasons(p), { form: true, aiCells: aiCellsOf(p) })}
+      <h3 class="q">¿Dónde está?</h3>
+      <div class="chips" id="zoneChips">
+        ${zones.map((z) => `<button type="button" class="chip ${z === p.zone ? "on" : ""}" data-action="edit-zone" data-zone="${esc(z)}">${esc(z)}</button>`).join("")}
+        <button type="button" class="chip" data-action="edit-new-zone">+ Nueva zona</button>
+      </div>
+      <input name="zone" id="editZone" class="big-input" placeholder="Terraza sur, jardín delantero…" autocomplete="off" value="${esc(p.zone)}" hidden />
       ${radioSeg("inPot", "Plantada en", p.inPot, [[true, "pot", "Maceta"], [false, "ground", "Suelo"]])}
       ${radioSeg("rainReaches", "La lluvia", p.rainReaches, [[true, "rain", "Le llega"], [false, "umbrella", "A cubierto"]])}
       <label class="switch-row">
@@ -350,7 +365,11 @@ function plantForm(id) {
         <input type="checkbox" role="switch" name="frostSensitive" class="switch-input" ${p.frostSensitive ? "checked" : ""} />
         <span class="switch" aria-hidden="true"></span>
       </label>
-      <label class="field">Notas<textarea name="notes" class="autogrow" rows="6" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
+      <section class="card care-block">
+        <h3>Cuidados${p.ai ? ` propuestos <span class="ai-mark">✦</span>` : ""}</h3>
+        ${seasonTable(p.seasons ?? legacySeasons(p), { form: true, aiCells: aiCellsOf(p) })}
+        <label class="field">Notas${aiMark(isAiValue(p, "notes"))}<textarea name="notes" class="autogrow" rows="6" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
+      </section>
       ${id ? `<button type="button" class="btn danger block delete-plant" data-action="del-plant" data-id="${id}">Eliminar planta</button>` : ""}
       <div class="sheet-actions"><button class="btn block" type="submit">${id ? "Guardar cambios" : "Guardar"}</button></div>
     </form>`);
@@ -540,11 +559,15 @@ async function aiFill(query) {
   const label = btn.innerHTML;
   btn.disabled = true;
   btn.setAttribute("aria-busy", "true");
-  btn.innerHTML = `<span class="spinner" aria-hidden="true"></span> Preparando la ficha…`;
+  btn.innerHTML = `<span class="spinner" aria-hidden="true"></span> Consultando a la IA…`;
   show(`Buscando los cuidados de «${name}». Tarda unos segundos.`, "ai");
   const loc = state.loc ?? DEFAULT_LOC;
   const cells = [...form.querySelectorAll(".st-cell")];
   cells.forEach((c) => { c.classList.add("skel"); c.classList.remove("ai"); });
+  const card = $("editCard");
+  const hadHalo = card.classList.contains("ai-halo");
+  card.classList.remove("done");
+  card.classList.add("ai-halo", "loading");
   try {
     const care = await requestCare(query ?? name);
     const f = form.elements;
@@ -563,6 +586,8 @@ async function aiFill(query) {
     form.dataset.aiFilled = "1";
     cells.forEach((c) => c.classList.add("ai"));
     form.querySelector(".season-table").classList.add("has-ai");
+    card.classList.add("done");
+    $("editAiLine").innerHTML = `<span class="ai-pill">✦ Rellenado con IA · revisa los datos</span>`;
     autogrow(f.notes);
     show(care.confidence === "baja"
       ? `⚠️ No está seguro de qué planta es «${name}». Revisa los datos o prueba con otro nombre.`
@@ -571,6 +596,9 @@ async function aiFill(query) {
   } catch (err) {
     show(aiErrorText(err.message), "warn");
   } finally {
+    card.classList.remove("loading");
+    if (!card.classList.contains("done") && !hadHalo) card.classList.remove("ai-halo");
+    if (hadHalo) card.classList.add("done");
     cells.forEach((c) => c.classList.remove("skel"));
     btn.disabled = false;
     btn.removeAttribute("aria-busy");
@@ -812,6 +840,19 @@ const actions = {
   "export-json": () => download(`mi-jardin-${localToday()}.json`, JSON.stringify(state.data), "application/json"),
   "import-json": () => $("importFile").click(),
   "ai-fill": () => aiFill(),
+  "edit-zone": (d, el) => {
+    $("editZone").value = d.zone;
+    $("editZone").hidden = true;
+    $("zoneChips").querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === el));
+    formDirty = true;
+  },
+  "edit-new-zone": (d, el) => {
+    $("editZone").value = "";
+    $("editZone").hidden = false;
+    $("zoneChips").querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === el));
+    $("editZone").focus();
+    formDirty = true;
+  },
   "edit-alt": (d) => aiFill(altQuery(JSON.parse($("plantForm").dataset.alternatives)[+d.i])),
   "upgrade-plants": () => { if (!upgrade?.running) upgradePlants(); },
   "upgrade-later": () => { store.set("mj_upgrade_later", CARE_VERSION); render(); },
@@ -823,7 +864,7 @@ document.addEventListener("click", (e) => {
   if (tab) { state.tab = tab.dataset.tab; store.set("mj_tab", state.tab); render(); return; }
   if (e.target.closest("#placeBtn")) return placeSheet();
   const el = e.target.closest("[data-action]");
-  if (el && actions[el.dataset.action]) { e.preventDefault(); actions[el.dataset.action](el.dataset); }
+  if (el && actions[el.dataset.action]) { e.preventDefault(); actions[el.dataset.action](el.dataset, el); }
 });
 
 document.addEventListener("input", (e) => {
@@ -843,7 +884,7 @@ document.addEventListener("change", async (e) => {
   if (e.target.closest("#plantForm")) formDirty = true;
   if (e.target.id === "photoInput" && e.target.files[0]) {
     draftPhoto = await shrinkPhoto(e.target.files[0]).catch(() => null);
-    if (draftPhoto) $("photoPreview").innerHTML = `<img src="${draftPhoto}" alt="" />`;
+    if (draftPhoto) $("photoPreview").innerHTML = `<img class="thumb" src="${draftPhoto}" alt="" />`;
   }
   if (e.target.id === "importFile" && e.target.files[0]) {
     try {
