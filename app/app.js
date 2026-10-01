@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001f";
+import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001g";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261001f";
-import { buildICS } from "./calendar.js?v=20261001f";
+} from "./rules.js?v=20261001g";
+import { buildICS } from "./calendar.js?v=20261001g";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -223,6 +223,8 @@ async function upgradePlants() {
     try {
       const care = await requestCare(plant.name);
       for (const u of missingUpgrades(plant)) u.apply(plant, care);
+      const snap = aiSnapshot(care);
+      plant.ai = { ...snap, values: { ...plant.ai?.values, ...snap.values } };
       if (!plant.species) plant.species = care.species;
       if (!plant.notes) plant.notes = care.notes;
       plant.careVersion = CARE_VERSION;
@@ -283,11 +285,11 @@ function plantSheet(id) {
     const due = nextDue(p, state.data.log, type, today, lat);
     if (due) {
       return `<div class="next-row"><span>${CARE[type].icon} ${CARE[type].label}: <strong>${relDue(daysBetween(today, due)).toLowerCase()}</strong> (${fmtDate(due)})</span>` +
-        `<span class="tag">${p.seasons ? `${SEASON_LABEL[season]} · ` : ""}cada ${every} d</span></div>`;
+        `<span class="tag">${p.seasons ? `${SEASON_LABEL[season]} · ` : ""}cada ${every} d${aiMark(isAiValue(p, `${season}.${type}`))}</span></div>`;
     }
     if (type === "feed" && p.seasons) {
       const back = SEASONS.slice(SEASONS.indexOf(season) + 1).concat(SEASONS).find((k) => intervalFor(p, "feed", k));
-      return `<div class="next-row"><span>${CARE.feed.icon} Sin abonar en ${SEASON_LABEL[season].toLowerCase()}</span>${back ? `<span class="tag">Vuelve en ${SEASON_LABEL[back].toLowerCase()}</span>` : ""}</div>`;
+      return `<div class="next-row"><span>${CARE.feed.icon} Sin abonar en ${SEASON_LABEL[season].toLowerCase()}${aiMark(isAiValue(p, `${season}.feed`))}</span>${back ? `<span class="tag">Vuelve en ${SEASON_LABEL[back].toLowerCase()}</span>` : ""}</div>`;
     }
     return null;
   }).filter(Boolean);
@@ -298,6 +300,10 @@ function plantSheet(id) {
   if (p.seasons && nextWater !== intervalFor(p, "water", season)) {
     nexts.push(`<p class="muted small next-change">El ${fmtDate(changeOn, { day: "numeric", month: "long" })} pasa a ${SEASON_LABEL[nextSeason].toLowerCase()}: regar cada ${nextWater} días.</p>`);
   }
+  if (p.ai) {
+    const changed = Object.keys(p.ai.values).filter((k) => !isAiValue(p, k)).length;
+    nexts.push(`<p class="muted small next-change"><span class="ai-mark">✦</span> Propuesto por la IA el ${fmtDate(p.ai.at, { day: "numeric", month: "long" })}${changed ? ` · ${changed === 1 ? "1 dato cambiado" : `${changed} datos cambiados`} por ti` : ""}.</p>`);
+  }
   if (missingUpgrades(p).length) nexts.push(`<p class="muted small next-change">Ficha por actualizar: Ajustes → ✨ Actualizar fichas.</p>`);
   const traits = [
     p.inPot ? "En maceta" : "En suelo",
@@ -307,12 +313,12 @@ function plantSheet(id) {
   openSheet(`
     <div class="sheet-head"><h2>${esc(p.name)}</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
     ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : ""}
-    <p class="muted">${esc([p.species, p.zone].filter(Boolean).join(" · "))}${p.species || p.zone ? "<br>" : ""}${esc(traits)}</p>
+    <p class="muted">${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}${p.species || p.zone ? "<br>" : ""}${esc(traits)}</p>
     ${nexts.length ? `<section class="card next-care">${nexts.join("")}</section>` : ""}
     <section class="card"><h2>Registrar</h2><div class="chips">
       ${Object.entries(CARE).map(([type, c]) => `<button class="chip" data-action="log" data-type="${type}" data-id="${p.id}" data-reopen="1">${c.icon} ${c.done}</button>`).join("")}
     </div></section>
-    ${p.notes ? `<section class="card"><h2>Notas</h2><p class="muted">${esc(p.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
+    ${p.notes ? `<section class="card"><h2>Notas${aiMark(isAiValue(p, "notes"))}</h2><p class="muted">${esc(p.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
     <section class="card"><h2>Historial</h2>${log.length ? `<ul class="log">${log.map((e) => `
       <li><span class="d">${fmtDate(e.date)}</span><span>${CARE[e.type]?.icon ?? ""} ${esc(CARE[e.type]?.done ?? e.type)}${e.note ? ` — ${esc(e.note)}` : ""}</span>
       <button class="x" data-action="del-log" data-log="${e.id}" data-id="${p.id}" aria-label="Borrar">✕</button></li>`).join("")}</ul>` : `<p class="muted">Sin registros todavía.</p>`}</section>
@@ -336,7 +342,7 @@ function plantForm(id) {
       <label class="field">Especie (opcional)<input name="species" placeholder="Citrus limon" value="${esc(p.species)}" /></label>
       <label class="field">Zona<input name="zone" list="zoneList" placeholder="Terraza sur" value="${esc(p.zone)}" /><datalist id="zoneList">${zones.map((z) => `<option value="${esc(z)}">`).join("")}</datalist></label>
       <div class="seg-label">Riego y abono</div>
-      ${seasonTable(p.seasons ?? legacySeasons(p), { form: true })}
+      ${seasonTable(p.seasons ?? legacySeasons(p), { form: true, aiCells: aiCellsOf(p) })}
       ${radioSeg("inPot", "Plantada en", p.inPot, [[true, "pot", "Maceta"], [false, "ground", "Suelo"]])}
       ${radioSeg("rainReaches", "La lluvia", p.rainReaches, [[true, "rain", "Le llega"], [false, "umbrella", "A cubierto"]])}
       <label class="switch-row">
@@ -395,6 +401,22 @@ function seasonTable(seasons, { form = false, busy = false, aiCells = new Set() 
     <p class="muted small">Cambia solo con la estación (ahora, ${SEASON_LABEL[now].toLowerCase()}) en ${esc(here().name)}. Abono vacío = no abonar esa estación.</p>`;
 }
 const ALL_CELLS = SEASONS.flatMap((k) => [`${k}.water`, `${k}.feed`]);
+
+// ---------- AI provenance ----------
+// A plant keeps what the AI proposed: { at, from, values: { "spring.water": 4, …, species, notes, frostSensitive } }.
+// A field counts as the AI's while its value is still the proposed one; once changed, it's the user's.
+function aiSnapshot(care, from) {
+  const values = { species: care.species, notes: care.notes, frostSensitive: care.frostSensitive };
+  for (const k of SEASONS) { values[`${k}.water`] = care.seasons[k].water; values[`${k}.feed`] = care.seasons[k].feed; }
+  return { at: localToday(), from: from ?? `${care.commonName} (${care.species})`, values };
+}
+function fieldValue(plant, key) {
+  const [season, kind] = key.split(".");
+  return kind ? plant.seasons?.[season]?.[kind] : plant[key];
+}
+const isAiValue = (plant, key) => Boolean(plant.ai) && key in plant.ai.values && plant.ai.values[key] === fieldValue(plant, key);
+const aiCellsOf = (plant) => new Set(ALL_CELLS.filter((c) => isAiValue(plant, c)));
+const aiMark = (on) => (on ? ` <span class="ai-mark" title="Propuesto por la IA">✦</span>` : "");
 
 const legacySeasons = (p) => Object.fromEntries(SEASONS.map((k) => [k, { water: p.waterEvery || 3, feed: p.feedEvery || 0 }]));
 const readSeasonTable = (f) => Object.fromEntries(SEASONS.map((k) => [k, {
@@ -534,6 +556,7 @@ async function aiFill(query) {
     // Replace the notes if they're empty or still the AI's previous text (e.g. for another plant).
     if (!f.notes.value.trim() || f.notes.value === form.dataset.aiNotes) f.notes.value = care.notes;
     form.dataset.aiNotes = care.notes;
+    form.dataset.aiSnapshot = JSON.stringify(aiSnapshot(care));
     form.dataset.alternatives = JSON.stringify(care.alternatives ?? []);
     formDirty = true;
     form.dataset.aiFilled = "1";
@@ -696,6 +719,7 @@ function wizSave() {
     seasons: wiz.seasons, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
     frostSensitive: wiz.frostSensitive, notes: wiz.notes, photo: draftPhoto,
   };
+  if (wiz.ai === "done" && wiz.care) plant.ai = aiSnapshot(wiz.care);
   plant.careVersion = CARE_VERSION;
   withCurrentIntervals(plant);
   store.set("mj_last_place", { zone, inPot: wiz.inPot, rainReaches: wiz.rainReaches });
@@ -870,6 +894,7 @@ document.addEventListener("submit", (e) => {
   };
   withCurrentIntervals(fields);
   if (e.target.dataset.aiFilled) fields.careVersion = CARE_VERSION;
+  if (e.target.dataset.aiSnapshot) fields.ai = JSON.parse(e.target.dataset.aiSnapshot);
   if (id) Object.assign(plantById(id), fields);
   else state.data.plants.push({ id: uid(), created: localToday(), ...fields });
   save();
