@@ -30,7 +30,7 @@ Los archivos llevan `?v=AAAAMMDDx` (en `index.html`, en los `import` de `app.js`
 
 ## Mejoras que necesitan datos nuevos de la IA
 
-Cada planta guarda `careVersion`. Cuando una mejora necesita datos nuevos (como la pauta por estación), se añade a `UPGRADES` en `app/app.js` con su versión, un texto y una función que rellena solo lo nuevo. Las plantas con versión anterior aparecen en Ajustes → «Fichas por actualizar», y al pulsar «✨ Actualizar fichas» la IA completa lo que falta sin tocar lo que puso el usuario.
+Cada planta guarda `careVersion`. Cuando una mejora necesita datos nuevos (como la pauta por estación), se añade a `UPGRADES` en `app/app.js` con su versión, un texto y una función que rellena solo lo nuevo. Las plantas con versión anterior aparecen en un aviso arriba en Hoy (con «Más tarde», que lo oculta hasta la siguiente mejora), con un punto rojo en la pestaña Ajustes y en la tarjeta «Fichas por actualizar»; al pulsar «Actualizar» la IA completa lo que falta sin tocar lo que puso el usuario.
 
 ## Fases
 

@@ -258,3 +258,9 @@ label.switch-row { cursor: pointer; }
   padding: 10px 16px max(16px, env(safe-area-inset-bottom));
   background: var(--bg); border-top: 0.5px solid var(--hairline);
 }
+
+/* «Fichas por actualizar»: banner on Hoy and dot on the Ajustes tab */
+.upgrade-banner { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--accent); background: var(--accent-soft); }
+.upgrade-banner p { margin: 0; font-size: 15px; line-height: 1.4; }
+.tabbar button { position: relative; }
+.tabbar button.has-dot::after { content: ""; position: absolute; top: 0; left: calc(50% + 9px); width: 9px; height: 9px; border-radius: 50%; background: var(--danger); border: 2px solid var(--bg); }

@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001c";
+import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001d";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261001c";
-import { buildICS } from "./calendar.js?v=20261001c";
+} from "./rules.js?v=20261001d";
+import { buildICS } from "./calendar.js?v=20261001d";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -83,7 +83,7 @@ function emptyGarden() {
 function todayView() {
   const today = localToday();
   const { plants, log } = state.data;
-  let html = forecastCard();
+  let html = upgradeBanner() + forecastCard();
   if (state.weather) {
     const alerts = weatherAlerts(plants, state.weather, today);
     html += alerts.length
@@ -179,15 +179,36 @@ const careVersionOf = (p) => p.careVersion ?? (hasSeasonalCare(p) ? 1 : 0);
 const missingUpgrades = (p) => UPGRADES.filter((u) => u.version > careVersionOf(p));
 
 let upgrade = null; // progress of the current "Actualizar fichas" run
+const pendingUpgrades = () => state.data.plants.filter((p) => missingUpgrades(p).length);
+const upgradeLabels = (pending) => [...new Set(pending.flatMap((p) => missingUpgrades(p).map((u) => u.label)))];
+
+function upgradeStatus() {
+  if (!upgrade) return "";
+  if (upgrade.running) return `<p class="ai-status"><span class="spinner" aria-hidden="true"></span> Actualizando ${upgrade.done + 1} de ${upgrade.total}…</p>`;
+  const ok = upgrade.done - upgrade.failed;
+  return `<p class="ai-status ${upgrade.failed || upgrade.stopped ? "warn" : "ok"}">${esc(upgrade.stopped ?? `✅ ${ok} ${ok === 1 ? "ficha actualizada" : "fichas actualizadas"}. Revisa los datos de cada planta.${upgrade.failed ? ` ${upgrade.failed} no se pudieron actualizar; prueba más tarde.` : ""}`)}</p>`;
+}
+
+// Top of Hoy: the same offer, compact. «Más tarde» hides it until a newer improvement arrives;
+// the Ajustes card and the dot on its tab stay meanwhile.
+function upgradeBanner() {
+  const pending = pendingUpgrades();
+  const dismissed = store.get("mj_upgrade_later", 0) >= CARE_VERSION;
+  if (upgrade && !upgrade.running && !upgrade.shownOnToday) return "";
+  if (!upgrade && (!pending.length || dismissed)) return "";
+  return `<section class="card upgrade-banner">
+    ${pending.length && !upgrade?.running ? `<p><strong>✨ ${pending.length === 1 ? "1 ficha tiene" : `${pending.length} fichas tienen`} mejoras nuevas</strong> <span class="muted">(${esc(upgradeLabels(pending).join(", "))})</span></p>
+    <div class="row"><button class="btn small" data-action="upgrade-plants">Actualizar</button><button class="btn small secondary" data-action="upgrade-later">Más tarde</button></div>` : ""}
+    ${upgradeStatus()}
+    ${upgrade && !upgrade.running ? `<div class="row"><button class="btn small secondary" data-action="upgrade-close">Cerrar</button></div>` : ""}
+  </section>`;
+}
+
 function upgradesCard() {
-  const pending = state.data.plants.filter((p) => missingUpgrades(p).length);
+  const pending = pendingUpgrades();
   if (!pending.length && !upgrade) return "";
-  const labels = [...new Set(pending.flatMap((p) => missingUpgrades(p).map((u) => u.label)))];
-  const result = upgrade
-    ? upgrade.running
-      ? `<p class="ai-status"><span class="spinner" aria-hidden="true"></span> Actualizando ${upgrade.done + 1} de ${upgrade.total}…</p>`
-      : `<p class="ai-status ${upgrade.failed || upgrade.stopped ? "warn" : "ok"}">${esc(upgrade.stopped ?? `✅ ${upgrade.done - upgrade.failed} ${upgrade.done - upgrade.failed === 1 ? "ficha actualizada" : "fichas actualizadas"}. Revisa los datos de cada planta.${upgrade.failed ? ` ${upgrade.failed} no se pudieron actualizar; prueba más tarde.` : ""}`)}</p>`
-    : "";
+  const labels = upgradeLabels(pending);
+  const result = upgradeStatus();
   return `<section class="card"><h2>Fichas por actualizar${pending.length ? ` · ${pending.length}` : ""}</h2>
     ${pending.length ? `<p class="muted">Hay mejoras que ${pending.length === 1 ? "esta planta aún no tiene" : "estas plantas aún no tienen"}: <strong>${esc(labels.join(", "))}</strong>. Pulsa una vez y la IA las completará. Lo que ya has puesto (nombre, zona, heladas y notas) no cambia.</p>
     <div class="row" style="margin-top:10px"><button class="btn small" data-action="upgrade-plants" ${upgrade?.running ? "disabled" : ""}>✨ Actualizar fichas</button></div>` : ""}
@@ -195,8 +216,8 @@ function upgradesCard() {
 }
 
 async function upgradePlants() {
-  const pending = state.data.plants.filter((p) => missingUpgrades(p).length);
-  upgrade = { done: 0, total: pending.length, failed: 0, running: true, stopped: null };
+  const pending = pendingUpgrades();
+  upgrade = { done: 0, total: pending.length, failed: 0, running: true, stopped: null, shownOnToday: state.tab === "today" };
   render();
   for (const plant of pending) {
     try {
@@ -223,6 +244,8 @@ function render() {
   $("placeBtn").textContent = `📍 ${loc.name}`;
   document.querySelectorAll(".tabbar button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
   $("fab").hidden = state.tab === "more";
+  // Dot on Ajustes while some plant sheet has improvements to fetch.
+  document.querySelector('.tabbar [data-tab="more"]').classList.toggle("has-dot", pendingUpgrades().length > 0);
   $("main").innerHTML = state.tab === "plants" ? plantsView() : state.tab === "more" ? moreView() : todayView();
 }
 
@@ -728,6 +751,8 @@ const actions = {
   "import-json": () => $("importFile").click(),
   "ai-fill": aiFill,
   "upgrade-plants": () => { if (!upgrade?.running) upgradePlants(); },
+  "upgrade-later": () => { store.set("mj_upgrade_later", CARE_VERSION); render(); },
+  "upgrade-close": () => { upgrade = null; render(); },
 };
 
 document.addEventListener("click", (e) => {
