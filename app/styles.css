@@ -250,3 +250,11 @@ label.switch-row { cursor: pointer; }
 .tag { background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .next-change { margin: 0; }
 .st-cell:has(input:placeholder-shown) span { visibility: hidden; }
+
+/* Save button pinned to the bottom of the sheet: content scrolls behind it */
+.sheet-actions {
+  position: sticky; bottom: 0; z-index: 1;
+  margin: 4px -16px calc(-1 * max(24px, env(safe-area-inset-bottom)));
+  padding: 10px 16px max(16px, env(safe-area-inset-bottom));
+  background: var(--bg); border-top: 0.5px solid var(--hairline);
+}

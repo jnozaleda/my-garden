@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001a";
+import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001b";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261001a";
-import { buildICS } from "./calendar.js?v=20261001a";
+} from "./rules.js?v=20261001b";
+import { buildICS } from "./calendar.js?v=20261001b";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -215,7 +215,20 @@ function openSheet(html) {
   if (!sheet.open) sheet.showModal();
 }
 function closeSheet() { sheet.close(); }
-sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); });
+
+// Unsaved work in the open sheet: an edited plant form (typed or AI-filled), or a new plant
+// whose name was already entered. Leaving asks first, so an AI fill isn't lost by accident.
+let formDirty = false;
+const hasUnsaved = () => formDirty || Boolean(wiz && ($("wizStep2") || $("wizName")?.elements.name.value.trim()));
+function confirmDiscard() {
+  if (hasUnsaved() && !confirm("Tienes cambios sin guardar. ¿Descartarlos?")) return false;
+  formDirty = false;
+  wiz = null;
+  return true;
+}
+const leaveSheet = () => { if (confirmDiscard()) closeSheet(); };
+sheet.addEventListener("click", (e) => { if (e.target === sheet) leaveSheet(); });
+sheet.addEventListener("cancel", (e) => { if (!confirmDiscard()) e.preventDefault(); }); // Esc / back gesture
 
 function plantSheet(id) {
   const p = plantById(id);
@@ -267,6 +280,7 @@ function plantSheet(id) {
 
 let draftPhoto = null;
 function plantForm(id) {
+  formDirty = false;
   const p = id ? plantById(id) : { name: "", species: "", zone: "", seasons: DEFAULT_SEASONS, rainReaches: true, inPot: true, frostSensitive: false, notes: "" };
   draftPhoto = p.photo ?? null;
   const zones = [...new Set(state.data.plants.map((x) => x.zone).filter(Boolean))];
@@ -290,7 +304,7 @@ function plantForm(id) {
         <span class="switch" aria-hidden="true"></span>
       </label>
       <label class="field">Notas<textarea name="notes" class="autogrow" rows="6" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
-      <button class="btn block" type="submit">Guardar</button>
+      <div class="sheet-actions"><button class="btn block" type="submit">${id ? "Guardar cambios" : "Guardar"}</button></div>
     </form>`);
   $("plantForm").dataset.id = id ?? "";
   autogrow($("plantForm").elements.notes);
@@ -462,6 +476,7 @@ async function aiFill() {
     }
     f.frostSensitive.checked = care.frostSensitive;
     if (!f.notes.value.trim()) f.notes.value = care.notes;
+    formDirty = true;
     autogrow(f.notes);
     show(care.confidence === "baja"
       ? `⚠️ No está seguro de qué planta es «${name}». Revisa los datos o prueba con otro nombre.`
@@ -568,9 +583,9 @@ function renderWizard() {
       </div>` : ""}
     </section>
     ${store.get("mj_last_place", null) ? `<p class="muted small">Zona y opciones como en la última planta que añadiste.</p>` : ""}
-    ${busy
+    <div class="sheet-actions">${busy
       ? `<button class="btn block" data-action="wiz-save" disabled aria-busy="true"><span class="spinner" aria-hidden="true"></span> Esperando a la IA…</button>`
-      : `<button class="btn block" data-action="wiz-save">Guardar planta</button>`}`);
+      : `<button class="btn block" data-action="wiz-save">Guardar planta</button>`}</div>`);
   if (wiz.newZone) setTimeout(() => $("wizZone")?.focus(), 50);
 }
 
@@ -609,6 +624,7 @@ function wizSave() {
   state.data.plants.push(plant);
   save();
   render();
+  wiz = null;
   plantSheet(plant.id);
 }
 
@@ -649,8 +665,8 @@ const actions = {
   "wiz-save": wizSave,
   "wiz-notes": () => { wiz.notesOpen = !wiz.notesOpen; renderWizard(); },
   "edit-plant": (d) => plantForm(d.id),
-  "open-plant": (d) => plantSheet(d.id),
-  close: closeSheet,
+  "open-plant": (d) => { if (confirmDiscard()) plantSheet(d.id); },
+  close: leaveSheet,
   "retry-weather": loadWeather,
   "open-place": placeSheet,
   log: (d) => {
@@ -704,6 +720,7 @@ document.addEventListener("click", (e) => {
 
 document.addEventListener("input", (e) => {
   if (e.target.classList?.contains("autogrow")) autogrow(e.target);
+  if (e.target.closest("#plantForm")) formDirty = true;
   if (!wiz) return;
   if (e.target.id === "wizZone") wiz.zone = e.target.value;
   const { season, kind } = e.target.dataset ?? {};
@@ -714,6 +731,7 @@ document.addEventListener("input", (e) => {
 });
 
 document.addEventListener("change", async (e) => {
+  if (e.target.closest("#plantForm")) formDirty = true;
   if (e.target.id === "photoInput" && e.target.files[0]) {
     draftPhoto = await shrinkPhoto(e.target.files[0]).catch(() => null);
     if (draftPhoto) $("photoPreview").innerHTML = `<img src="${draftPhoto}" alt="" />`;
@@ -751,6 +769,7 @@ document.addEventListener("submit", (e) => {
     return;
   }
   if (e.target.id !== "plantForm") return;
+  formDirty = false;
   e.preventDefault();
   const f = new FormData(e.target);
   const id = e.target.dataset.id;
