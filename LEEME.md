@@ -28,6 +28,10 @@ Abre http://localhost:8767 (o usa la configuración `mijardin` del panel de prev
 
 Los archivos llevan `?v=AAAAMMDDx` (en `index.html`, en los `import` de `app.js` y en `calendar.js`). Al publicar cambios en `app/`, sube ese número en todos a la vez: así el navegador no mezcla un archivo nuevo con otro viejo de su caché.
 
+## Mejoras que necesitan datos nuevos de la IA
+
+Cada planta guarda `careVersion`. Cuando una mejora necesita datos nuevos (como la pauta por estación), se añade a `UPGRADES` en `app/app.js` con su versión, un texto y una función que rellena solo lo nuevo. Las plantas con versión anterior aparecen en Ajustes → «Fichas por actualizar», y al pulsar «✨ Actualizar fichas» la IA completa lo que falta sin tocar lo que puso el usuario.
+
 ## Fases
 
 1. ✅ Inventario, registro de cuidados, previsión, avisos en la app, exportar al calendario, copia de seguridad.

@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001b";
+import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001c";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261001b";
-import { buildICS } from "./calendar.js?v=20261001b";
+} from "./rules.js?v=20261001c";
+import { buildICS } from "./calendar.js?v=20261001c";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -144,7 +144,7 @@ function moreView() {
       </form>
       ${codeStatus ? `<p class="ai-status ${codeStatus.kind}" style="margin-top:10px">${esc(codeStatus.text)}</p>` : ""}
     </section>
-    ${seasonsCard()}
+    ${upgradesCard()}
     <section class="card"><h2>Calendario</h2>
       <p class="muted">Añade los riegos y abonados a tu calendario (Apple, Google u Outlook) como eventos que se repiten. Si cambias los intervalos o registras cuidados, vuelve a exportarlo.</p>
       <div class="row" style="margin-top:10px"><button class="btn small" data-action="export-ics" ${state.data.plants.length ? "" : "disabled"}>📅 Exportar al calendario</button></div>
@@ -161,42 +161,60 @@ function moreView() {
     </section>`;
 }
 
-// Plants saved before the seasonal sheet: offer to fetch their four seasons in one go.
-let bulk = null; // { done, total, failed, stopped }
-function seasonsCard() {
-  const pending = state.data.plants.filter((p) => !p.seasons);
-  if (!pending.length && !bulk) return "";
-  const body = bulk
-    ? bulk.running
-      ? `<p class="ai-status"><span class="spinner" aria-hidden="true"></span> Actualizando ${bulk.done + 1} de ${bulk.total}…</p>`
-      : `<p class="ai-status ${bulk.failed || bulk.stopped ? "warn" : "ok"}">${esc(bulk.stopped ?? `✅ ${bulk.done - bulk.failed} plantas con pauta por estación.${bulk.failed ? ` ${bulk.failed} no se pudieron actualizar; prueba más tarde.` : ""}`)}</p>`
+// ---------- Care sheet upgrades ----------
+// When an improvement needs new data from the AI, it gets a version and an entry here. Plants
+// whose sheet is older are offered "Actualizar fichas" in Ajustes, which fills only the new parts.
+const UPGRADES = [
+  {
+    version: 1,
+    label: "pauta de riego y abono por estación",
+    // Keeps a season table the user already shaped; replaces a missing or flat (all-year) one.
+    apply: (plant, care) => { if (!hasSeasonalCare(plant)) plant.seasons = care.seasons; },
+  },
+];
+const CARE_VERSION = UPGRADES.at(-1).version;
+const hasSeasonalCare = (p) => Boolean(p.seasons) && new Set(SEASONS.map((k) => `${p.seasons[k].water}/${p.seasons[k].feed}`)).size > 1;
+// Plants from before versioning: a varied season table means they already have version 1.
+const careVersionOf = (p) => p.careVersion ?? (hasSeasonalCare(p) ? 1 : 0);
+const missingUpgrades = (p) => UPGRADES.filter((u) => u.version > careVersionOf(p));
+
+let upgrade = null; // progress of the current "Actualizar fichas" run
+function upgradesCard() {
+  const pending = state.data.plants.filter((p) => missingUpgrades(p).length);
+  if (!pending.length && !upgrade) return "";
+  const labels = [...new Set(pending.flatMap((p) => missingUpgrades(p).map((u) => u.label)))];
+  const result = upgrade
+    ? upgrade.running
+      ? `<p class="ai-status"><span class="spinner" aria-hidden="true"></span> Actualizando ${upgrade.done + 1} de ${upgrade.total}…</p>`
+      : `<p class="ai-status ${upgrade.failed || upgrade.stopped ? "warn" : "ok"}">${esc(upgrade.stopped ?? `✅ ${upgrade.done - upgrade.failed} ${upgrade.done - upgrade.failed === 1 ? "ficha actualizada" : "fichas actualizadas"}. Revisa los datos de cada planta.${upgrade.failed ? ` ${upgrade.failed} no se pudieron actualizar; prueba más tarde.` : ""}`)}</p>`
     : "";
-  return `<section class="card"><h2>Pauta por estación</h2>
-    ${pending.length ? `<p class="muted">${pending.length === 1 ? "1 planta tiene" : `${pending.length} plantas tienen`} el mismo riego y abono todo el año. La IA puede proponer el de cada estación para ${esc(here().name)}. Tus notas, zona y heladas no cambian.</p>
-    <div class="row" style="margin-top:10px"><button class="btn small" data-action="bulk-seasons" ${bulk?.running ? "disabled" : ""}>✨ Actualizar con la IA</button></div>` : ""}
-    ${body}</section>`;
+  return `<section class="card"><h2>Fichas por actualizar${pending.length ? ` · ${pending.length}` : ""}</h2>
+    ${pending.length ? `<p class="muted">Hay mejoras que ${pending.length === 1 ? "esta planta aún no tiene" : "estas plantas aún no tienen"}: <strong>${esc(labels.join(", "))}</strong>. Pulsa una vez y la IA las completará. Lo que ya has puesto (nombre, zona, heladas y notas) no cambia.</p>
+    <div class="row" style="margin-top:10px"><button class="btn small" data-action="upgrade-plants" ${upgrade?.running ? "disabled" : ""}>✨ Actualizar fichas</button></div>` : ""}
+    ${result}</section>`;
 }
 
-async function bulkSeasons() {
-  const pending = state.data.plants.filter((p) => !p.seasons);
-  bulk = { done: 0, total: pending.length, failed: 0, running: true, stopped: null };
+async function upgradePlants() {
+  const pending = state.data.plants.filter((p) => missingUpgrades(p).length);
+  upgrade = { done: 0, total: pending.length, failed: 0, running: true, stopped: null };
   render();
   for (const plant of pending) {
     try {
       const care = await requestCare(plant.name);
-      plant.seasons = care.seasons;
+      for (const u of missingUpgrades(plant)) u.apply(plant, care);
       if (!plant.species) plant.species = care.species;
       if (!plant.notes) plant.notes = care.notes;
+      plant.careVersion = CARE_VERSION;
       withCurrentIntervals(plant);
       save();
     } catch (err) {
-      if (err.message === "code" || err.message === "limit") { bulk.stopped = aiErrorText(err.message); break; }
-      bulk.failed += 1;
+      if (err.message === "code" || err.message === "limit") { upgrade.stopped = aiErrorText(err.message); break; }
+      upgrade.failed += 1;
     }
-    bulk.done += 1;
+    upgrade.done += 1;
     render();
   }
-  bulk.running = false;
+  upgrade.running = false;
   render();
 }
 
@@ -257,7 +275,7 @@ function plantSheet(id) {
   if (p.seasons && nextWater !== intervalFor(p, "water", season)) {
     nexts.push(`<p class="muted small next-change">El ${fmtDate(changeOn, { day: "numeric", month: "long" })} pasa a ${SEASON_LABEL[nextSeason].toLowerCase()}: regar cada ${nextWater} días.</p>`);
   }
-  if (!p.seasons) nexts.push(`<p class="muted small next-change">Pauta fija todo el año. Pulsa Editar → ✨ para tenerla por estación.</p>`);
+  if (missingUpgrades(p).length) nexts.push(`<p class="muted small next-change">Ficha por actualizar: Ajustes → ✨ Actualizar fichas.</p>`);
   const traits = [
     p.inPot ? "En maceta" : "En suelo",
     p.rainReaches ? "le llega la lluvia" : "a cubierto",
@@ -477,6 +495,7 @@ async function aiFill() {
     f.frostSensitive.checked = care.frostSensitive;
     if (!f.notes.value.trim()) f.notes.value = care.notes;
     formDirty = true;
+    form.dataset.aiFilled = "1";
     autogrow(f.notes);
     show(care.confidence === "baja"
       ? `⚠️ No está seguro de qué planta es «${name}». Revisa los datos o prueba con otro nombre.`
@@ -619,6 +638,7 @@ function wizSave() {
     seasons: wiz.seasons, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
     frostSensitive: wiz.frostSensitive, notes: wiz.notes, photo: draftPhoto,
   };
+  plant.careVersion = CARE_VERSION;
   withCurrentIntervals(plant);
   store.set("mj_last_place", { zone, inPot: wiz.inPot, rainReaches: wiz.rainReaches });
   state.data.plants.push(plant);
@@ -707,7 +727,7 @@ const actions = {
   "export-json": () => download(`mi-jardin-${localToday()}.json`, JSON.stringify(state.data), "application/json"),
   "import-json": () => $("importFile").click(),
   "ai-fill": aiFill,
-  "bulk-seasons": () => { if (!bulk?.running) bulkSeasons(); },
+  "upgrade-plants": () => { if (!upgrade?.running) upgradePlants(); },
 };
 
 document.addEventListener("click", (e) => {
@@ -785,6 +805,7 @@ document.addEventListener("submit", (e) => {
     photo: draftPhoto,
   };
   withCurrentIntervals(fields);
+  if (e.target.dataset.aiFilled) fields.careVersion = CARE_VERSION;
   if (id) Object.assign(plantById(id), fields);
   else state.data.plants.push({ id: uid(), created: localToday(), ...fields });
   save();
