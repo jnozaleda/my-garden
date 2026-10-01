@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototipo · estados de la IA</title>
+<style>
+  :root { --bg: #000; --card: #1c1c1e; --hair: rgba(255,255,255,.1); --text: #f5f5f7; --text2: #98989d; --text3: #636366;
+          --accent: #4cc26f; --accent-soft: rgba(76,194,111,.16); --ai: #b9a3ff; --ai-soft: rgba(178,140,255,.16); --ai-a: #4cc26f; --ai-b: #37c3c3; --ai-c: #6aa2ff; --ai-d: #b28cff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #111; color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif; padding: 24px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; } .lead { color: #aaa; font-size: 14px; margin: 0 0 20px; }
+  .wrap { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .col > p { color: #aaa; font-size: 13px; margin: 0 0 8px; } .col > p b { color: #fff; }
+  .phone { width: 320px; background: var(--bg); border-radius: 30px; padding: 16px 14px; border: 1px solid #333; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--card); border: .5px solid var(--hair); border-radius: 18px; padding: 12px 14px; }
+
+  /* Plant card with AI halo */
+  .plant { position: relative; display: flex; gap: 12px; align-items: center; border-radius: 18px; padding: 12px 14px; background: var(--card); }
+  .plant::before { content: ""; position: absolute; inset: -1.5px; border-radius: 19.5px; padding: 1.5px; z-index: 0;
+    background: conic-gradient(from var(--ang, 0deg), var(--ai-a), var(--ai-b), var(--ai-c), var(--ai-d), var(--ai-a));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+  .plant > * { position: relative; z-index: 1; }
+  @property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+  .plant.loading::before { animation: spin 2.4s linear infinite; }
+  .plant.loading { box-shadow: 0 0 22px -6px rgba(76,194,111,.45); }
+  .plant.done::before { opacity: .55; }
+  @keyframes spin { to { --ang: 360deg; } }
+  .thumb { width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); display: grid; place-items: center; font-size: 22px; flex: none; }
+  .name { font-weight: 700; font-size: 16px; }
+  .sub { color: var(--text2); font-size: 13px; }
+  .step { color: var(--text2); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .dots::after { content: ""; animation: dots 1.2s steps(4) infinite; } @keyframes dots { 0%{content:""} 25%{content:"."} 50%{content:".."} 75%{content:"..."} }
+  .pill { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--ai); background: var(--ai-soft); border-radius: 999px; padding: 3px 9px; }
+
+  /* Season table */
+  .st { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px 8px; align-items: center; font-size: 14px; }
+  .st .h { font-size: 12px; color: var(--text3); font-weight: 600; } .st .s { color: var(--text2); font-weight: 600; } .st .s.now { color: var(--accent); }
+  .cell { position: relative; overflow: hidden; height: 36px; border-radius: 10px; background: #000; border: .5px solid var(--hair); display: flex; align-items: center; padding: 0 10px; justify-content: space-between; font-size: 16px; }
+  .cell small { color: var(--text3); font-size: 12px; }
+  .cell.skel { color: transparent; }
+  .cell.skel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.09) 50%, transparent 80%); transform: translateX(-100%); animation: shimmer 1.4s ease-in-out infinite; }
+  @keyframes shimmer { to { transform: translateX(100%); } }
+  /* AI provenance: a small lilac mark, no fill — green stays for "this season" */
+  .cell.ai::before { content: "✦"; position: absolute; top: 3px; right: 6px; font-size: 9px; color: var(--ai); }
+  .cell.now { border: 1.5px solid var(--accent); }
+  .cell.mine { background: #000; }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--text2); margin-top: 8px; } .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  .btn { text-align: center; border-radius: 12px; padding: 12px; font-weight: 600; font-size: 15px; }
+  .btn.wait { background: var(--accent-soft); color: var(--accent); } .btn.go { background: var(--accent); color: #000; }
+  .spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: s .7s linear infinite; display: inline-block; } @keyframes s { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .plant.loading::before, .cell.skel::after { animation: none; } }
+</style>
+</head>
+<body>
+<h1>Mi Jardín · cómo se ve la IA trabajando</h1>
+<p class="lead">Prototipo para decidir. Los números son de ejemplo.</p>
+<div class="wrap">
+
+  <div class="col"><p><b>1 · Pensando</b> — borde que gira, celdas con brillo, texto que avanza</p>
+  <div class="phone">
+    <div class="plant loading"><div class="thumb">🪴</div><div><div class="name">Lavanda</div><div class="step"><span class="spin" style="color:var(--accent)"></span><span id="stepText">Identificando la planta</span><span class="dots"></span></div></div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:10px">Cuidados</div>
+      <div class="st"><span></span><span class="h">Regar cada</span><span class="h">Abonar cada</span>
+        <span class="s">Primavera</span><div class="cell skel">0</div><div class="cell skel">0</div>
+        <span class="s">Verano</span><div class="cell skel">0</div><div class="cell skel">0</div>
+        <span class="s now">Otoño</span><div class="cell skel">0</div><div class="cell skel">0</div>
+        <span class="s">Invierno</span><div class="cell skel">0</div><div class="cell skel">0</div></div></div>
+    <div class="btn wait"><span class="spin"></span> Esperando a la IA…</div>
+  </div></div>
+
+  <div class="col"><p><b>2 · Rellenado por la IA</b> — lila para la IA, verde para la estación actual</p>
+  <div class="phone">
+    <div class="plant done"><div class="thumb">🪴</div><div><div class="name">Lavanda</div><div class="sub">Lavandula angustifolia</div><span class="pill">✦ Rellenado con IA · revisa los datos</span></div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:10px">Cuidados propuestos <span style="color:var(--ai)">✦</span></div>
+      <div class="st"><span></span><span class="h">Regar cada</span><span class="h">Abonar cada</span>
+        <span class="s">Primavera</span><div class="cell ai">5<small>d</small></div><div class="cell ai">30<small>d</small></div>
+        <span class="s">Verano</span><div class="cell ai">3<small>d</small></div><div class="cell ai">30<small>d</small></div>
+        <span class="s now">Otoño</span><div class="cell ai now">7<small>d</small></div><div class="cell ai now" style="color:var(--text3)">No</div>
+        <span class="s">Invierno</span><div class="cell ai">14<small>d</small></div><div class="cell ai" style="color:var(--text3)">No</div></div></div>
+    <div class="btn go">Guardar planta</div>
+  </div></div>
+
+  <div class="col"><p><b>3 · Después de tocar un valor</b> — lo tuyo pierde la marca ✦</p>
+  <div class="phone">
+    <div class="plant done"><div class="thumb">🪴</div><div><div class="name">Lavanda</div><div class="sub">Lavandula angustifolia</div><span class="pill">✦ Rellenado con IA · revisa los datos</span></div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:10px">Cuidados propuestos <span style="color:var(--ai)">✦</span></div>
+      <div class="st"><span></span><span class="h">Regar cada</span><span class="h">Abonar cada</span>
+        <span class="s">Primavera</span><div class="cell ai">5<small>d</small></div><div class="cell ai">30<small>d</small></div>
+        <span class="s">Verano</span><div class="cell mine">2<small>d</small></div><div class="cell ai">30<small>d</small></div>
+        <span class="s now">Otoño</span><div class="cell ai now">7<small>d</small></div><div class="cell ai now" style="color:var(--text3)">No</div>
+        <span class="s">Invierno</span><div class="cell ai">14<small>d</small></div><div class="cell ai" style="color:var(--text3)">No</div></div>
+      <div class="legend"><span><span style="color:var(--ai)">✦</span> Propuesto por la IA</span><span><span class="sw" style="background:transparent;border:1.5px solid var(--accent)"></span>Estación actual</span></div></div>
+    <div class="btn go">Guardar planta</div>
+  </div></div>
+
+</div>
+<script>
+  const steps = ["Identificando la planta", "Calculando el riego por estación", "Revisando el abonado", "Escribiendo consejos"];
+  let i = 0; setInterval(() => { i = (i + 1) % steps.length; document.getElementById("stepText").textContent = steps[i]; }, 1800);
+</script>
+</body>
+</html>

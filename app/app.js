@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001d";
+import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001e";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261001d";
-import { buildICS } from "./calendar.js?v=20261001d";
+} from "./rules.js?v=20261001e";
+import { buildICS } from "./calendar.js?v=20261001e";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -375,22 +375,26 @@ function withCurrentIntervals(plant) {
 const DEFAULT_SEASONS = { spring: { water: 4, feed: 30 }, summer: { water: 2, feed: 30 }, autumn: { water: 5, feed: 0 }, winter: { water: 10, feed: 0 } };
 const SEASON_ICON = { spring: "sprout", summer: "sun", autumn: "leaf", winter: "snow" };
 
-function seasonTable(seasons, { form = false, busy = false } = {}) {
+// `aiCells` holds "season.kind" keys proposed by the AI and not changed since: they carry a ✦.
+function seasonTable(seasons, { form = false, busy = false, aiCells = new Set() } = {}) {
   const now = seasonOf(localToday(), here().lat);
   const cell = (k, kind, value) => {
     const attrs = form ? `name="s-${k}-${kind}"` : `data-season="${k}" data-kind="${kind}"`;
     const shown = busy ? "" : kind === "feed" ? value || "" : value;
-    return `<label class="st-cell"><input type="number" ${attrs} min="${kind === "water" ? 1 : 0}" max="${kind === "water" ? 60 : 365}" inputmode="numeric" value="${shown}" placeholder="${busy ? "…" : kind === "feed" ? "No" : ""}" aria-label="${kind === "water" ? "Regar" : "Abonar"} en ${SEASON_LABEL[k].toLowerCase()}, días" ${busy ? "disabled" : ""} /><span>d</span></label>`;
+    const cls = [busy ? "skel" : "", aiCells.has(`${k}.${kind}`) ? "ai" : ""].join(" ");
+    return `<label class="st-cell ${cls}"><input type="number" ${attrs} min="${kind === "water" ? 1 : 0}" max="${kind === "water" ? 60 : 365}" inputmode="numeric" value="${shown}" placeholder="${busy ? "" : kind === "feed" ? "No" : ""}" aria-label="${kind === "water" ? "Regar" : "Abonar"} en ${SEASON_LABEL[k].toLowerCase()}, días" ${busy ? "disabled" : ""} /><span>d</span></label>`;
   };
   return `
-    <div class="season-table">
+    <div class="season-table ${aiCells.size ? "has-ai" : ""}">
       <span></span><span class="st-h">Regar cada</span><span class="st-h">Abonar cada</span>
       ${SEASONS.map((k) => `
         <span class="st-name ${k === now ? "now" : ""}">${ICONS[SEASON_ICON[k]]}${SEASON_LABEL[k]}</span>
         ${cell(k, "water", seasons[k].water)}${cell(k, "feed", seasons[k].feed)}`).join("")}
     </div>
+    <p class="st-legend"><span class="ai-mark">✦</span> Propuesto por la IA <span class="now-box"></span> Estación actual</p>
     <p class="muted small">Cambia solo con la estación (ahora, ${SEASON_LABEL[now].toLowerCase()}) en ${esc(here().name)}. Abono vacío = no abonar esa estación.</p>`;
 }
+const ALL_CELLS = SEASONS.flatMap((k) => [`${k}.water`, `${k}.feed`]);
 
 const legacySeasons = (p) => Object.fromEntries(SEASONS.map((k) => [k, { water: p.waterEvery || 3, feed: p.feedEvery || 0 }]));
 const readSeasonTable = (f) => Object.fromEntries(SEASONS.map((k) => [k, {
@@ -505,8 +509,10 @@ async function aiFill() {
   btn.disabled = true;
   btn.setAttribute("aria-busy", "true");
   btn.innerHTML = `<span class="spinner" aria-hidden="true"></span> Preparando la ficha…`;
-  show(`Buscando los cuidados de «${name}». Tarda unos segundos.`);
+  show(`Buscando los cuidados de «${name}». Tarda unos segundos.`, "ai");
   const loc = state.loc ?? DEFAULT_LOC;
+  const cells = [...form.querySelectorAll(".st-cell")];
+  cells.forEach((c) => { c.classList.add("skel"); c.classList.remove("ai"); });
   try {
     const care = await requestCare(name);
     const f = form.elements;
@@ -519,13 +525,16 @@ async function aiFill() {
     if (!f.notes.value.trim()) f.notes.value = care.notes;
     formDirty = true;
     form.dataset.aiFilled = "1";
+    cells.forEach((c) => c.classList.add("ai"));
+    form.querySelector(".season-table").classList.add("has-ai");
     autogrow(f.notes);
     show(care.confidence === "baja"
       ? `⚠️ No está seguro de qué planta es «${name}». Revisa los datos o prueba con otro nombre.`
-      : `✨ Propuesta para ${care.commonName} en ${loc.name} este mes. Revisa y guarda.`, care.confidence === "baja" ? "warn" : "ok");
+      : `✦ Rellenado con IA para ${care.commonName} en ${loc.name}. Revisa los datos y guarda.`, care.confidence === "baja" ? "warn" : "ai");
   } catch (err) {
     show(aiErrorText(err.message), "warn");
   } finally {
+    cells.forEach((c) => c.classList.remove("skel"));
     btn.disabled = false;
     btn.removeAttribute("aria-busy");
     btn.innerHTML = label;
@@ -592,14 +601,14 @@ function renderWizard() {
       ${options.map(([value, icon, text]) => `<button type="button" role="radio" aria-checked="${wiz[key] === value}" data-action="wiz-set" data-key="${key}" data-value="${value}">${ICONS[icon]}${text}</button>`).join("")}
     </div>`;
   const aiLine = {
-    loading: `<span class="spinner" aria-hidden="true"></span><span class="muted">Buscando los cuidados de «${esc(wiz.name)}»…</span>`,
-    done: `<span class="muted">${esc(wiz.species || "Especie sin identificar")}</span>`,
+    loading: `<span class="ai-step"><span class="spinner" aria-hidden="true"></span><span id="wizAiStep">${AI_STEPS[wiz.aiStep ?? 0]}</span>…</span>`,
+    done: `<span class="muted">${esc(wiz.species || "Especie sin identificar")}</span><span class="ai-pill">✦ Rellenado con IA · revisa los datos</span>`,
     error: `<span class="muted">${esc(wiz.aiError)}</span>`,
     idle: `<span class="muted">Cuidados a mano: ajústalos abajo.</span>`,
   }[wiz.ai];
   openSheet(`
     ${head(`<button class="btn small secondary" data-action="wiz-back">Atrás</button>`)}
-    <section class="card ai-card ${wiz.ai}" id="wizStep2">
+    <section class="card ai-card ${wiz.ai} ${wiz.ai === "loading" || wiz.ai === "done" ? "ai-halo" : ""}" id="wizStep2">
       ${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb">🪴</span>`}
       <div class="body"><div class="name">${esc(wiz.name)}</div>${aiLine}</div>
     </section>
@@ -616,8 +625,8 @@ function renderWizard() {
       <span>${ICONS.snow}Sensible a heladas</span><span class="switch" aria-hidden="true"></span>
     </button>
     <section class="card care-block">
-      <h3>Cuidados${wiz.ai === "done" ? ` propuestos ${ICONS.sparkle}` : ""}</h3>
-      ${seasonTable(wiz.seasons, { busy })}
+      <h3>Cuidados${wiz.ai === "done" ? ` propuestos <span class="ai-mark">✦</span>` : ""}</h3>
+      ${seasonTable(wiz.seasons, { busy, aiCells: wiz.ai === "done" ? new Set(ALL_CELLS.filter((c) => !wiz.touched[c])) : undefined })}
       ${wiz.ai === "done" && wiz.notes ? `
       <div class="ai-notes ${wiz.notesOpen ? "open" : ""}">
         <p>${esc(wiz.notes)}</p>
@@ -631,10 +640,19 @@ function renderWizard() {
   if (wiz.newZone) setTimeout(() => $("wizZone")?.focus(), 50);
 }
 
+// What the AI card says while waiting: it advances every couple of seconds.
+const AI_STEPS = ["Identificando la planta", "Calculando el riego por estación", "Revisando el abonado", "Escribiendo consejos"];
+
 async function wizLookup() {
   const current = wiz;
   current.ai = "loading";
+  current.aiStep = 0;
   renderWizard();
+  const ticker = setInterval(() => {
+    current.aiStep = Math.min(current.aiStep + 1, AI_STEPS.length - 1);
+    const el = $("wizAiStep");
+    if (el && wiz === current) el.textContent = AI_STEPS[current.aiStep];
+  }, 2200);
   try {
     const care = await requestCare(current.name);
     current.care = care;
@@ -649,6 +667,7 @@ async function wizLookup() {
     current.ai = "error";
     current.aiError = aiErrorText(err.message);
   }
+  clearInterval(ticker);
   // Redraw only if this draft's step 2 is still what the sheet shows.
   if (wiz === current && $("wizStep2")) renderWizard();
 }
@@ -766,6 +785,7 @@ document.addEventListener("click", (e) => {
 document.addEventListener("input", (e) => {
   if (e.target.classList?.contains("autogrow")) autogrow(e.target);
   if (e.target.closest("#plantForm")) formDirty = true;
+  e.target.closest(".st-cell")?.classList.remove("ai");
   if (!wiz) return;
   if (e.target.id === "wizZone") wiz.zone = e.target.value;
   const { season, kind } = e.target.dataset ?? {};
