@@ -14,6 +14,7 @@ const SEASON_ES = { spring: "primavera", summer: "verano", autumn: "otoño", win
 const CARE_SCHEMA = {
   type: "object",
   properties: {
+    isPlant: { type: "boolean", description: "false si el nombre no corresponde a ninguna planta (una palabra al azar, un objeto, un animal…)" },
     commonName: { type: "string", description: "Nombre común en español" },
     species: { type: "string", description: "Nombre científico (género y especie)" },
     ...Object.fromEntries(SEASONS.flatMap((k) => [
@@ -22,9 +23,18 @@ const CARE_SCHEMA = {
     ])),
     frostSensitive: { type: "boolean", description: "Si sufre con temperaturas bajo 0 °C" },
     notes: { type: "string", description: "Entre 2 y 4 frases cortas (menos de 350 caracteres) sobre ESTA planta: luz, cuándo podar, plagas habituales y su momento clave del año" },
-    confidence: { type: "string", enum: ["alta", "media", "baja"], description: "baja si el nombre es ambiguo o no reconoces la planta" },
+    confidence: { type: "string", enum: ["alta", "media", "baja"], description: "baja si no reconoces bien la planta" },
+    alternatives: {
+      type: "array", maxItems: 3,
+      description: "Si el nombre común se usa para varias plantas distintas, las otras posibles (no la elegida). Vacío si no hay duda.",
+      items: {
+        type: "object",
+        properties: { commonName: { type: "string" }, species: { type: "string", description: "Nombre científico" } },
+        required: ["commonName", "species"], additionalProperties: false,
+      },
+    },
   },
-  required: ["commonName", "species", ...SEASONS.flatMap((k) => [`water_${k}`, `feed_${k}`]), "frostSensitive", "notes", "confidence"],
+  required: ["isPlant", "alternatives", "commonName", "species", ...SEASONS.flatMap((k) => [`water_${k}`, `feed_${k}`]), "frostSensitive", "notes", "confidence"],
   additionalProperties: false,
 };
 
@@ -42,7 +52,11 @@ function careMessages({ name, place, lat, lon }) {
         "una maceta puede necesitar agua cada 1–3 días; en primavera y otoño cada 3–7; en invierno cada 7–15. " +
         "Las suculentas y plantas de secano, bastante menos. Abonado: cada 15–60 días en crecimiento, 0 en reposo. " +
         "Las notas son consejos prácticos sobre la planta concreta, válidos todo el año; empieza directamente por el " +
-        "consejo, no describas el tiempo y no supongas si está en maceta o en suelo. Responde siempre en español.",
+        "consejo, no describas el tiempo y no supongas si está en maceta o en suelo. " +
+        "Si el nombre no es una planta, marca isPlant=false y no inventes una especie. " +
+        "Si el nombre común se usa para varias plantas (por ejemplo «jazmín»: Jasminum officinale, el falso jazmín " +
+        "Trachelospermum jasminoides…), rellena la ficha de la más habitual en jardines y terrazas de España y pon las " +
+        "demás en alternatives. Responde siempre en español.",
     },
     {
       role: "user",
@@ -80,6 +94,10 @@ function clipSentences(text, max) {
   return end > 0 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, "") + "…";
 }
 
+// "Pelargonium × hortorum" and "Pelargonium hortorum" are the same plant.
+const sameSpecies = (s) => s.toLowerCase().replace(/[^a-z]/g, "");
+const looksLikeSpecies = (s) => /^[A-Z][a-zë]+(\s|$|\.)/.test(s);
+
 // Nobody fertilises every few days: small models sometimes answer "1" meaning "yes, feed it".
 // Read anything under a week as the usual fortnightly feed.
 const feedDays = (n) => (n > 0 && n < 7 ? 15 : n);
@@ -99,6 +117,14 @@ function sanitize(c) {
     frostSensitive: c.frostSensitive === true || c.frostSensitive === "true",
     notes: clipSentences(str(c.notes, 2000), 600),
     confidence: ["alta", "media", "baja"].includes(c.confidence) ? c.confidence : "baja",
+    alternatives: (Array.isArray(c.alternatives) ? c.alternatives : [])
+      .map((a) => ({ commonName: str(a?.commonName, 60), species: str(a?.species, 80) }))
+      .filter((a, i, all) => a.commonName && looksLikeSpecies(a.species) && sameSpecies(a.species) !== sameSpecies(str(c.species, 80))
+        && all.findIndex((x) => sameSpecies(x.species) === sameSpecies(a.species)) === i)
+      .slice(0, 3),
+    // Small models sometimes play along with nonsense ("random" → species "random"): a real answer
+    // has a Latin-looking name (capitalised genus).
+    isPlant: c.isPlant !== false && c.isPlant !== "false" && looksLikeSpecies(str(c.species, 80)),
   };
 }
 
@@ -139,7 +165,7 @@ async function handleCare(request, env, headers) {
   const place = String(body.place ?? "").slice(0, 60);
 
   // Same plant, same climate cell (~100 km) → same answer, whatever the month.
-  const cacheKey = `care:v4:${env.PROVIDER}:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
+  const cacheKey = `care:v5:${env.PROVIDER}:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers);
 
@@ -158,6 +184,7 @@ async function handleCare(request, env, headers) {
     console.error("care failed", env.PROVIDER, env.MODEL, err?.message);
     return json({ error: "ai" }, 502, headers);
   }
+  if (!care.isPlant) return json({ error: "not_plant" }, 422, headers);
   if (care.confidence !== "baja") await env.CACHE.put(cacheKey, JSON.stringify(care), { expirationTtl: CACHE_TTL });
   return json(withLegacy(care, body.month, lat), 200, headers);
 }

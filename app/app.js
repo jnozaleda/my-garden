@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001e";
+import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001f";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261001e";
-import { buildICS } from "./calendar.js?v=20261001e";
+} from "./rules.js?v=20261001f";
+import { buildICS } from "./calendar.js?v=20261001f";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -467,7 +467,15 @@ function download(name, text, type) {
 const AI_ERRORS = {
   code: "Código de acceso incorrecto o sin poner: revísalo en Ajustes.",
   limit: "Se ha alcanzado el límite de hoy. Rellénalo a mano o prueba mañana.",
+  not_plant: "No parece el nombre de una planta. Si es un apodo, prueba con su nombre común (por ejemplo «poto»), o rellena los cuidados a mano.",
 };
+
+// "¿No es esta? También podría ser: …" — each button asks for that plant instead.
+const altButtons = (alts, action) => alts?.length
+  ? `<div class="ai-alts"><span>¿No es esta? También podría ser:</span>${alts.map((a, i) =>
+      `<button type="button" class="chip" data-action="${action}" data-i="${i}">${esc(a.commonName)} <em>${esc(a.species)}</em></button>`).join("")}</div>`
+  : "";
+const altQuery = (a) => `${a.commonName} (${a.species})`;
 
 // Resolves to the care sheet, or throws an Error whose message is a key of AI_ERRORS
 // ("code", "limit") or "timeout" / "network" / "ai".
@@ -496,10 +504,11 @@ const aiErrorText = (key) => AI_ERRORS[key] ?? {
   network: "Sin conexión con el asistente. Rellénalo a mano.",
 }[key] ?? "El asistente no está disponible ahora. Rellénalo a mano.";
 
-async function aiFill() {
+// `query` is set when the user picked one of the alternatives; otherwise the plant's name is asked.
+async function aiFill(query) {
   const form = $("plantForm");
   const status = $("aiStatus");
-  const show = (text, kind = "") => { status.hidden = false; status.className = `ai-status ${kind}`; status.textContent = text; };
+  const show = (text, kind = "", extra = "") => { status.hidden = false; status.className = `ai-status ${kind}`; status.innerHTML = esc(text) + extra; };
   const name = form.elements.name.value.trim();
   if (!name) { form.elements.name.focus(); return show("Escribe primero el nombre de la planta.", "warn"); }
   if (!store.get("mj_ai_code", "")) return show(AI_ERRORS.code, "warn");
@@ -514,7 +523,7 @@ async function aiFill() {
   const cells = [...form.querySelectorAll(".st-cell")];
   cells.forEach((c) => { c.classList.add("skel"); c.classList.remove("ai"); });
   try {
-    const care = await requestCare(name);
+    const care = await requestCare(query ?? name);
     const f = form.elements;
     f.species.value = care.species;
     for (const k of SEASONS) {
@@ -522,7 +531,10 @@ async function aiFill() {
       f[`s-${k}-feed`].value = care.seasons[k].feed || "";
     }
     f.frostSensitive.checked = care.frostSensitive;
-    if (!f.notes.value.trim()) f.notes.value = care.notes;
+    // Replace the notes if they're empty or still the AI's previous text (e.g. for another plant).
+    if (!f.notes.value.trim() || f.notes.value === form.dataset.aiNotes) f.notes.value = care.notes;
+    form.dataset.aiNotes = care.notes;
+    form.dataset.alternatives = JSON.stringify(care.alternatives ?? []);
     formDirty = true;
     form.dataset.aiFilled = "1";
     cells.forEach((c) => c.classList.add("ai"));
@@ -530,7 +542,8 @@ async function aiFill() {
     autogrow(f.notes);
     show(care.confidence === "baja"
       ? `⚠️ No está seguro de qué planta es «${name}». Revisa los datos o prueba con otro nombre.`
-      : `✦ Rellenado con IA para ${care.commonName} en ${loc.name}. Revisa los datos y guarda.`, care.confidence === "baja" ? "warn" : "ai");
+      : `✦ Rellenado con IA para ${care.commonName} (${care.species}) en ${loc.name}. Revisa los datos y guarda.`, care.confidence === "baja" ? "warn" : "ai",
+      altButtons(care.alternatives, "edit-alt"));
   } catch (err) {
     show(aiErrorText(err.message), "warn");
   } finally {
@@ -604,6 +617,8 @@ function renderWizard() {
     loading: `<span class="ai-step"><span class="spinner" aria-hidden="true"></span><span id="wizAiStep">${AI_STEPS[wiz.aiStep ?? 0]}</span>…</span>`,
     done: `<span class="muted">${esc(wiz.species || "Especie sin identificar")}</span><span class="ai-pill">✦ Rellenado con IA · revisa los datos</span>`,
     error: `<span class="muted">${esc(wiz.aiError)}</span>`,
+    notplant: `<span class="ai-warn">«${esc(wiz.name)}» no parece una planta.</span><span class="muted small">${esc(wiz.aiError.replace(/^No parece el nombre de una planta\. /, ""))}</span>
+      <button type="button" class="btn small secondary" data-action="wiz-back" style="align-self:flex-start;margin-top:6px">Cambiar el nombre</button>`,
     idle: `<span class="muted">Cuidados a mano: ajústalos abajo.</span>`,
   }[wiz.ai];
   openSheet(`
@@ -612,6 +627,7 @@ function renderWizard() {
       ${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb">🪴</span>`}
       <div class="body"><div class="name">${esc(wiz.name)}</div>${aiLine}</div>
     </section>
+    ${wiz.ai === "done" ? altButtons(wiz.care?.alternatives, "wiz-alt") : ""}
     ${wiz.care?.confidence === "baja" ? `<p class="ai-status warn">⚠️ La IA no está segura de qué planta es. Revisa los días o vuelve atrás y prueba con otro nombre.</p>` : ""}
     <h3 class="q">¿Dónde está?</h3>
     <div class="chips">
@@ -654,7 +670,7 @@ async function wizLookup() {
     if (el && wiz === current) el.textContent = AI_STEPS[current.aiStep];
   }, 2200);
   try {
-    const care = await requestCare(current.name);
+    const care = await requestCare(current.query ?? current.name);
     current.care = care;
     current.ai = "done";
     current.species = care.species;
@@ -664,7 +680,7 @@ async function wizLookup() {
     if (!current.touched.frostSensitive) current.frostSensitive = care.frostSensitive;
     current.notes = care.notes;
   } catch (err) {
-    current.ai = "error";
+    current.ai = err.message === "not_plant" ? "notplant" : "error";
     current.aiError = aiErrorText(err.message);
   }
   clearInterval(ticker);
@@ -717,6 +733,7 @@ function addLog(plantId, type, note = "") {
 const actions = {
   "new-plant": newPlantWizard,
   "wiz-back": () => { wiz.step = 1; renderWizard(); },
+  "wiz-alt": (d) => { wiz.query = altQuery(wiz.care.alternatives[+d.i]); wizLookup(); },
   "wiz-zone": (d) => { wiz.zone = d.zone; wiz.newZone = false; renderWizard(); },
   "wiz-new-zone": () => { wiz.newZone = true; wiz.zone = ""; renderWizard(); },
   "wiz-set": (d) => {
@@ -768,7 +785,8 @@ const actions = {
   "export-ics": () => download("mi-jardin.ics", buildICS(state.data.plants, state.data.log, localToday(), here().lat), "text/calendar"),
   "export-json": () => download(`mi-jardin-${localToday()}.json`, JSON.stringify(state.data), "application/json"),
   "import-json": () => $("importFile").click(),
-  "ai-fill": aiFill,
+  "ai-fill": () => aiFill(),
+  "edit-alt": (d) => aiFill(altQuery(JSON.parse($("plantForm").dataset.alternatives)[+d.i])),
   "upgrade-plants": () => { if (!upgrade?.running) upgradePlants(); },
   "upgrade-later": () => { store.set("mj_upgrade_later", CARE_VERSION); render(); },
   "upgrade-close": () => { upgrade = null; render(); },
@@ -824,8 +842,9 @@ document.addEventListener("submit", (e) => {
     if (!name) return;
     const changed = name !== wiz.name;
     wiz.name = name;
+    if (changed) wiz.query = null;
     wiz.step = 2;
-    if (changed || wiz.ai === "error") {
+    if (changed || wiz.ai === "error" || wiz.ai === "notplant") {
       wiz.care = null;
       if (store.get("mj_ai_code", "")) return wizLookup();
       wiz.ai = "idle";

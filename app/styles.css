@@ -299,3 +299,11 @@ label.switch-row { cursor: pointer; }
 .season-table.has-ai + .st-legend { display: flex; }
 .now-box { display: inline-block; width: 10px; height: 10px; border: 1.5px solid var(--accent); border-radius: 3px; margin-left: 10px; }
 @media (prefers-reduced-motion: reduce) { .ai-halo.loading::before, .st-cell.skel::after { animation: none; } }
+
+/* Not a plant / other possible plants */
+.ai-warn { color: var(--warn); font-weight: 600; font-size: 14px; }
+.ai-alts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.ai-alts > span { width: 100%; }
+.ai-alts .chip { font-size: 13px; padding: 6px 10px; border: 1px solid var(--ai-soft); }
+.ai-alts .chip em { font-style: italic; font-weight: 400; color: var(--text-2); margin-left: 2px; }
+.ai-status .ai-alts { margin-top: 8px; }
