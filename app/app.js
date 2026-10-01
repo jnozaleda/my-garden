@@ -414,6 +414,11 @@ function renderWizard() {
       ${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb">🪴</span>`}
       <div class="body"><div class="name">${esc(wiz.name)} ${wiz.ai === "done" ? "✨" : ""}</div>${aiCard}</div>
     </section>
+    ${wiz.ai === "done" && wiz.notes ? `
+    <section class="ai-notes ${wiz.notesOpen ? "open" : ""}">
+      <p>${esc(wiz.notes)}</p>
+      <button type="button" class="more" data-action="wiz-notes" aria-expanded="${Boolean(wiz.notesOpen)}">${wiz.notesOpen ? "Ver menos" : "Ver más"}</button>
+    </section>` : ""}
     ${wiz.care?.confidence === "baja" ? `<p class="ai-status warn">⚠️ La IA no está segura de qué planta es. Revisa los días o vuelve atrás y prueba con otro nombre.</p>` : ""}
     <h3 class="q">¿Dónde está?</h3>
     <div class="chips">
@@ -506,6 +511,7 @@ const actions = {
     renderWizard();
   },
   "wiz-save": wizSave,
+  "wiz-notes": () => { wiz.notesOpen = !wiz.notesOpen; renderWizard(); },
   "edit-plant": (d) => plantForm(d.id),
   "open-plant": (d) => plantSheet(d.id),
   close: closeSheet,
