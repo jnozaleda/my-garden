@@ -307,3 +307,8 @@ label.switch-row { cursor: pointer; }
 .ai-alts .chip { font-size: 13px; padding: 6px 10px; border: 1px solid var(--ai-soft); }
 .ai-alts .chip em { font-style: italic; font-weight: 400; color: var(--text-2); margin-left: 2px; }
 .ai-status .ai-alts { margin-top: 8px; }
+
+/* Plant sheet header: Editar + Cerrar; delete lives at the end of the edit form */
+.sheet-head .row { flex-wrap: nowrap; }
+.sheet-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.delete-plant { margin-top: 12px; }

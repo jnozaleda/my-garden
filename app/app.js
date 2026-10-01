@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001g";
+import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001h";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261001g";
-import { buildICS } from "./calendar.js?v=20261001g";
+} from "./rules.js?v=20261001h";
+import { buildICS } from "./calendar.js?v=20261001h";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -311,7 +311,7 @@ function plantSheet(id) {
     p.frostSensitive ? "sensible a heladas" : null,
   ].filter(Boolean).join(" · ");
   openSheet(`
-    <div class="sheet-head"><h2>${esc(p.name)}</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
+    <div class="sheet-head"><h2>${esc(p.name)}</h2><div class="row"><button class="btn small secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
     ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : ""}
     <p class="muted">${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}${p.species || p.zone ? "<br>" : ""}${esc(traits)}</p>
     ${nexts.length ? `<section class="card next-care">${nexts.join("")}</section>` : ""}
@@ -322,7 +322,7 @@ function plantSheet(id) {
     <section class="card"><h2>Historial</h2>${log.length ? `<ul class="log">${log.map((e) => `
       <li><span class="d">${fmtDate(e.date)}</span><span>${CARE[e.type]?.icon ?? ""} ${esc(CARE[e.type]?.done ?? e.type)}${e.note ? ` — ${esc(e.note)}` : ""}</span>
       <button class="x" data-action="del-log" data-log="${e.id}" data-id="${p.id}" aria-label="Borrar">✕</button></li>`).join("")}</ul>` : `<p class="muted">Sin registros todavía.</p>`}</section>
-    <div class="row"><button class="btn secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn danger" data-action="del-plant" data-id="${p.id}">Eliminar</button></div>`);
+    `);
 }
 
 let draftPhoto = null;
@@ -351,6 +351,7 @@ function plantForm(id) {
         <span class="switch" aria-hidden="true"></span>
       </label>
       <label class="field">Notas<textarea name="notes" class="autogrow" rows="6" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
+      ${id ? `<button type="button" class="btn danger block delete-plant" data-action="del-plant" data-id="${id}">Eliminar planta</button>` : ""}
       <div class="sheet-actions"><button class="btn block" type="submit">${id ? "Guardar cambios" : "Guardar"}</button></div>
     </form>`);
   $("plantForm").dataset.id = id ?? "";
@@ -790,6 +791,7 @@ const actions = {
   "del-plant": (d) => {
     const p = plantById(d.id);
     if (!confirm(`¿Eliminar «${p.name}» y todo su historial?`)) return;
+    formDirty = false;
     state.data.plants = state.data.plants.filter((x) => x.id !== d.id);
     state.data.log = state.data.log.filter((e) => e.plantId !== d.id);
     save(); closeSheet(); render();
