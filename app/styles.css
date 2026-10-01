@@ -201,3 +201,6 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, 0.35); }
 
 /* Focus ring in the app's green instead of the browser default */
 input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Fields waiting for the AI */
+.choice:disabled, .field input:disabled { opacity: 0.45; cursor: default; }

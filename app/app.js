@@ -168,7 +168,6 @@ function render() {
 // ---------- Sheets ----------
 const sheet = $("sheet");
 function openSheet(html) {
-  delete sheet.dataset.plant;
   sheet.innerHTML = `<div class="sheet-in">${html}</div>`;
   if (!sheet.open) sheet.showModal();
 }
@@ -202,7 +201,6 @@ function plantSheet(id) {
       <li><span class="d">${fmtDate(e.date)}</span><span>${CARE[e.type]?.icon ?? ""} ${esc(CARE[e.type]?.done ?? e.type)}${e.note ? ` — ${esc(e.note)}` : ""}</span>
       <button class="x" data-action="del-log" data-log="${e.id}" data-id="${p.id}" aria-label="Borrar">✕</button></li>`).join("")}</ul>` : `<p class="muted">Sin registros todavía.</p>`}</section>
     <div class="row"><button class="btn secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn danger" data-action="del-plant" data-id="${p.id}">Eliminar</button></div>`);
-  sheet.dataset.plant = id;
 }
 
 let draftPhoto = null;
@@ -399,8 +397,11 @@ function renderWizard() {
     return;
   }
   const zones = [...new Set([...state.data.plants.map((p) => p.zone), wiz.zone].filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
-  const choice = (key, value, icon, label) =>
-    `<button type="button" class="choice ${wiz[key] === value ? "on" : ""}" data-action="wiz-set" data-key="${key}" data-value="${value}" aria-pressed="${wiz[key] === value}"><span class="ico">${icon}</span>${label}</button>`;
+  // While the AI is answering, the fields it fills (and Guardar) wait; the place choices stay free.
+  const busy = wiz.ai === "loading";
+  const lock = busy ? "disabled" : "";
+  const choice = (key, value, icon, label, locked = "") =>
+    `<button type="button" class="choice ${wiz[key] === value ? "on" : ""}" data-action="wiz-set" data-key="${key}" data-value="${value}" aria-pressed="${wiz[key] === value}" ${locked}><span class="ico">${icon}</span>${label}</button>`;
   const aiCard = {
     loading: `<span class="spinner" aria-hidden="true"></span><span class="muted">Buscando los cuidados de «${esc(wiz.name)}»…</span>`,
     done: `<span class="muted">${esc([wiz.species, `regar cada ${wiz.waterEvery} d`, wiz.feedEvery ? `abonar cada ${wiz.feedEvery} d` : "sin abonar ahora"].filter(Boolean).join(" · "))}</span>`,
@@ -422,13 +423,15 @@ function renderWizard() {
     ${wiz.newZone ? `<input id="wizZone" class="big-input" placeholder="Terraza sur, jardín delantero…" autocomplete="off" value="${esc(wiz.zone)}" />` : ""}
     <div class="choices">${choice("inPot", true, "🪴", "Maceta")}${choice("inPot", false, "🌱", "Suelo")}</div>
     <div class="choices">${choice("rainReaches", true, "🌧️", "Le llueve")}${choice("rainReaches", false, "☂️", "A cubierto")}</div>
-    <div class="choices one">${choice("frostSensitive", true, "❄️", `Sensible a heladas: ${wiz.frostSensitive ? "sí" : "no"}`)}</div>
+    <div class="choices one">${choice("frostSensitive", true, "❄️", `Sensible a heladas: ${busy ? "…" : wiz.frostSensitive ? "sí" : "no"}`, lock)}</div>
     <div class="two">
-      <label class="field">Regar cada (días)<input id="wizWater" type="number" min="0" max="90" inputmode="numeric" value="${wiz.waterEvery || ""}" /></label>
-      <label class="field">Abonar cada (días)<input id="wizFeed" type="number" min="0" max="365" inputmode="numeric" value="${wiz.feedEvery || ""}" /></label>
+      <label class="field">Regar cada (días)<input id="wizWater" type="number" min="0" max="90" inputmode="numeric" value="${busy ? "" : wiz.waterEvery || ""}" placeholder="${busy ? "…" : ""}" ${lock} /></label>
+      <label class="field">Abonar cada (días)<input id="wizFeed" type="number" min="0" max="365" inputmode="numeric" value="${busy ? "" : wiz.feedEvery || ""}" placeholder="${busy ? "…" : ""}" ${lock} /></label>
     </div>
     ${store.get("mj_last_place", null) ? `<p class="muted small">Zona y opciones como en la última planta que añadiste.</p>` : ""}
-    <button class="btn block" data-action="wiz-save">Guardar planta</button>`);
+    ${busy
+      ? `<button class="btn block" data-action="wiz-save" disabled aria-busy="true"><span class="spinner" aria-hidden="true"></span> Esperando a la IA…</button>`
+      : `<button class="btn block" data-action="wiz-save">Guardar planta</button>`}`);
   if (wiz.newZone) setTimeout(() => $("wizZone")?.focus(), 50);
 }
 
@@ -449,20 +452,12 @@ async function wizLookup() {
     current.ai = "error";
     current.aiError = aiErrorText(err.message);
   }
-  // Saved before the answer arrived: complete that plant with whatever the user didn't set.
-  const saved = current.savedId && plantById(current.savedId);
-  if (saved && current.care) {
-    Object.assign(saved, { species: current.species, notes: current.notes, waterEvery: current.waterEvery, feedEvery: current.feedEvery, frostSensitive: current.frostSensitive });
-    save();
-    render();
-    if (sheet.open && sheet.dataset.plant === saved.id) plantSheet(saved.id);
-    return;
-  }
   // Redraw only if this draft's step 2 is still what the sheet shows.
   if (wiz === current && $("wizStep2")) renderWizard();
 }
 
 function wizSave() {
+  if (wiz.ai === "loading") return;
   const zone = wiz.zone.trim();
   const plant = {
     id: uid(), created: localToday(), name: wiz.name, species: wiz.species, zone,
@@ -471,7 +466,6 @@ function wizSave() {
   };
   store.set("mj_last_place", { zone, inPot: wiz.inPot, rainReaches: wiz.rainReaches });
   state.data.plants.push(plant);
-  wiz.savedId = plant.id;
   save();
   render();
   plantSheet(plant.id);
