@@ -362,6 +362,18 @@ async function aiFill() {
   }
 }
 
+// Line icons for controls: they take the text colour, so the selected state can tint them.
+// (Emoji stay for content: forecast, task rows, plant placeholders.)
+const svg = (d) => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+const ICONS = {
+  pot: svg('<path d="M5 10h14l-1.6 9.1a1 1 0 0 1-1 .9H7.6a1 1 0 0 1-1-.9z"/><path d="M12 10V6"/><path d="M12 6c0-2 1.5-3 3.5-3 0 2-1.5 3-3.5 3zM12 7.5C12 6 10.8 5 9 5c0 1.5 1.2 2.5 3 2.5z"/>'),
+  ground: svg('<path d="M3 19h18M7 22h10"/><path d="M12 19v-8"/><path d="M12 11c0-3 2-5 5.5-5 0 3-2 5-5.5 5zM12 14c0-2.5-1.8-4-4.5-4 0 2.5 1.8 4 4.5 4z"/>'),
+  rain: svg('<path d="M7 14.5A4 4 0 0 1 7.6 6.6 5.5 5.5 0 0 1 18 8.5a3 3 0 0 1-.5 6z"/><path d="M8 18l-1 2.5M12 18l-1 2.5M16 18l-1 2.5"/>'),
+  umbrella: svg('<path d="M3 12a9 9 0 0 1 18 0z"/><path d="M12 12v6.5a2 2 0 0 0 4 0"/><path d="M12 3v.01"/>'),
+  snow: svg('<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.5 12 6l2.5-1.5M9.5 19.5 12 18l2.5 1.5"/>'),
+  sparkle: svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16v4M17 18h4"/>'),
+};
+
 // ---------- New plant: two steps ----------
 // Step 1 asks what the plant is (and starts the AI lookup); step 2 asks where it lives, with big
 // toggles pre-set from the last plant added. Editing an existing plant keeps the full form.
@@ -400,11 +412,15 @@ function renderWizard() {
   // While the AI is answering, the fields it fills (and Guardar) wait; the place choices stay free.
   const busy = wiz.ai === "loading";
   const lock = busy ? "disabled" : "";
-  const choice = (key, value, icon, label, locked = "") =>
-    `<button type="button" class="choice ${wiz[key] === value ? "on" : ""}" data-action="wiz-set" data-key="${key}" data-value="${value}" aria-pressed="${wiz[key] === value}" ${locked}><span class="ico">${icon}</span>${label}</button>`;
-  const aiCard = {
+  // Two mutually exclusive options → one segmented control per question.
+  const segmented = (key, label, options) => `
+    <div class="seg-label" id="seg-${key}">${label}</div>
+    <div class="seg" role="radiogroup" aria-labelledby="seg-${key}">
+      ${options.map(([value, icon, text]) => `<button type="button" role="radio" aria-checked="${wiz[key] === value}" data-action="wiz-set" data-key="${key}" data-value="${value}">${ICONS[icon]}${text}</button>`).join("")}
+    </div>`;
+  const aiLine = {
     loading: `<span class="spinner" aria-hidden="true"></span><span class="muted">Buscando los cuidados de «${esc(wiz.name)}»…</span>`,
-    done: `<span class="muted">${esc([wiz.species, `regar cada ${wiz.waterEvery} d`, wiz.feedEvery ? `abonar cada ${wiz.feedEvery} d` : "sin abonar ahora"].filter(Boolean).join(" · "))}</span>`,
+    done: `<span class="muted">${esc(wiz.species || "Especie sin identificar")}</span>`,
     error: `<span class="muted">${esc(wiz.aiError)}</span>`,
     idle: `<span class="muted">Cuidados a mano: ajústalos abajo.</span>`,
   }[wiz.ai];
@@ -412,13 +428,8 @@ function renderWizard() {
     ${head(`<button class="btn small secondary" data-action="wiz-back">Atrás</button>`)}
     <section class="card ai-card ${wiz.ai}" id="wizStep2">
       ${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb">🪴</span>`}
-      <div class="body"><div class="name">${esc(wiz.name)} ${wiz.ai === "done" ? "✨" : ""}</div>${aiCard}</div>
+      <div class="body"><div class="name">${esc(wiz.name)}</div>${aiLine}</div>
     </section>
-    ${wiz.ai === "done" && wiz.notes ? `
-    <section class="ai-notes ${wiz.notesOpen ? "open" : ""}">
-      <p>${esc(wiz.notes)}</p>
-      <button type="button" class="more" data-action="wiz-notes" aria-expanded="${Boolean(wiz.notesOpen)}">${wiz.notesOpen ? "Ver menos" : "Ver más"}</button>
-    </section>` : ""}
     ${wiz.care?.confidence === "baja" ? `<p class="ai-status warn">⚠️ La IA no está segura de qué planta es. Revisa los días o vuelve atrás y prueba con otro nombre.</p>` : ""}
     <h3 class="q">¿Dónde está?</h3>
     <div class="chips">
@@ -426,13 +437,23 @@ function renderWizard() {
       <button type="button" class="chip ${wiz.newZone ? "on" : ""}" data-action="wiz-new-zone">+ Nueva zona</button>
     </div>
     ${wiz.newZone ? `<input id="wizZone" class="big-input" placeholder="Terraza sur, jardín delantero…" autocomplete="off" value="${esc(wiz.zone)}" />` : ""}
-    <div class="choices">${choice("inPot", true, "🪴", "Maceta")}${choice("inPot", false, "🌱", "Suelo")}</div>
-    <div class="choices">${choice("rainReaches", true, "🌧️", "Le llueve")}${choice("rainReaches", false, "☂️", "A cubierto")}</div>
-    <div class="choices one">${choice("frostSensitive", true, "❄️", `Sensible a heladas: ${busy ? "…" : wiz.frostSensitive ? "sí" : "no"}`, lock)}</div>
-    <div class="two">
-      <label class="field">Regar cada (días)<input id="wizWater" type="number" min="0" max="90" inputmode="numeric" value="${busy ? "" : wiz.waterEvery || ""}" placeholder="${busy ? "…" : ""}" ${lock} /></label>
-      <label class="field">Abonar cada (días)<input id="wizFeed" type="number" min="0" max="365" inputmode="numeric" value="${busy ? "" : wiz.feedEvery || ""}" placeholder="${busy ? "…" : ""}" ${lock} /></label>
-    </div>
+    ${segmented("inPot", "Plantada en", [[true, "pot", "Maceta"], [false, "ground", "Suelo"]])}
+    ${segmented("rainReaches", "La lluvia", [[true, "rain", "Le llega"], [false, "umbrella", "A cubierto"]])}
+    <button type="button" class="switch-row" role="switch" aria-checked="${wiz.frostSensitive && !busy}" data-action="wiz-set" data-key="frostSensitive" ${lock}>
+      <span>${ICONS.snow}Sensible a heladas</span><span class="switch" aria-hidden="true"></span>
+    </button>
+    <section class="card care-block">
+      <h3>Cuidados${wiz.ai === "done" ? ` propuestos ${ICONS.sparkle}` : ""}</h3>
+      <div class="two">
+        <label class="field">Regar cada (días)<input id="wizWater" type="number" min="0" max="90" inputmode="numeric" value="${busy ? "" : wiz.waterEvery || ""}" placeholder="${busy ? "…" : ""}" ${lock} /></label>
+        <label class="field">Abonar cada (días)<input id="wizFeed" type="number" min="0" max="365" inputmode="numeric" value="${busy ? "" : wiz.feedEvery || ""}" placeholder="${busy ? "…" : "—"}" ${lock} /></label>
+      </div>
+      ${wiz.ai === "done" && wiz.notes ? `
+      <div class="ai-notes ${wiz.notesOpen ? "open" : ""}">
+        <p>${esc(wiz.notes)}</p>
+        <button type="button" class="more" data-action="wiz-notes" aria-expanded="${Boolean(wiz.notesOpen)}">${wiz.notesOpen ? "Ver menos" : "Ver más"}</button>
+      </div>` : ""}
+    </section>
     ${store.get("mj_last_place", null) ? `<p class="muted small">Zona y opciones como en la última planta que añadiste.</p>` : ""}
     ${busy
       ? `<button class="btn block" data-action="wiz-save" disabled aria-busy="true"><span class="spinner" aria-hidden="true"></span> Esperando a la IA…</button>`
