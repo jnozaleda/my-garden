@@ -23,11 +23,57 @@ export function lastDone(log, plantId, type) {
   return last;
 }
 
-// Next due date for a recurring care type, or null if the plant has no interval for it.
-export function nextDue(plant, log, type) {
-  const every = type === "water" ? plant.waterEvery : type === "feed" ? plant.feedEvery : 0;
+// ---------- Seasons ----------
+// Meteorological seasons (whole months: spring = March–May in the north), flipped south of the
+// equator. Each plant keeps a water/feed interval per season; the one in force is today's.
+export const SEASONS = ["spring", "summer", "autumn", "winter"];
+export const SEASON_LABEL = { spring: "Primavera", summer: "Verano", autumn: "Otoño", winter: "Invierno" };
+const pad = (n) => String(n).padStart(2, "0");
+
+export function seasonOf(iso, lat) {
+  const m = Number(iso.slice(5, 7));
+  const north = lat < 0 ? ((m + 5) % 12) + 1 : m;
+  return SEASONS[Math.floor(((north + 9) % 12) / 3)];
+}
+
+// First day of the season that contains `iso`.
+export function seasonStart(iso, lat) {
+  const season = seasonOf(iso, lat);
+  let y = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7));
+  for (let i = 0; i < 2; i++) {
+    const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
+    if (seasonOf(`${py}-${pad(pm)}-01`, lat) !== season) break;
+    m = pm; y = py;
+  }
+  return `${y}-${pad(m)}-01`;
+}
+
+export function nextSeasonStart(iso, lat) {
+  const start = seasonStart(iso, lat);
+  let y = Number(start.slice(0, 4)), m = Number(start.slice(5, 7)) + 3;
+  if (m > 12) { m -= 12; y += 1; }
+  return `${y}-${pad(m)}-01`;
+}
+
+// Plants saved before the seasonal sheet have one interval for the whole year.
+export function intervalFor(plant, type, season) {
+  const s = plant.seasons?.[season];
+  if (s) return type === "water" ? s.water : s.feed;
+  return type === "water" ? plant.waterEvery : plant.feedEvery;
+}
+
+// Next due date for a recurring care type in today's season, or null if it doesn't apply now
+// (no interval, or feeding paused this season).
+export function nextDue(plant, log, type, today, lat) {
+  const every = intervalFor(plant, type, seasonOf(today, lat));
   if (!every) return null;
-  return addDays(lastDone(log, plant.id, type) ?? plant.created, every);
+  const due = addDays(lastDone(log, plant.id, type) ?? plant.created, every);
+  // Feeding resumes with the season: count from its first day, not from last year's feed.
+  if (type === "feed") {
+    const start = seasonStart(today, lat);
+    if (due < start) return start;
+  }
+  return due;
 }
 
 // Weather facts for the next few days, relative to today.
@@ -48,12 +94,12 @@ function outlook(weather) {
 
 // Tasks to show today: overdue or due within `horizon` days, adjusted for the weather.
 // Each task: { plant, type, due, days (negative = overdue), advice?: { kind: "skip"|"urgent", text } }
-export function dueTasks(plants, log, weather, today, horizon = 2) {
+export function dueTasks(plants, log, weather, today, lat, horizon = 2) {
   const o = outlook(weather);
   const tasks = [];
   for (const plant of plants) {
     for (const type of ["water", "feed"]) {
-      const due = nextDue(plant, log, type);
+      const due = nextDue(plant, log, type, today, lat);
       if (!due) continue;
       let days = daysBetween(today, due);
       let advice = null;

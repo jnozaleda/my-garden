@@ -231,3 +231,22 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 label.switch-row { cursor: pointer; }
 .switch-row:has(.switch-input:checked) .switch { background: var(--accent); }
 .switch-row:has(.switch-input:checked) .switch::after { transform: translateX(18px); }
+
+/* Seasonal care: table in the forms, current/next lines in the plant sheet */
+.season-table { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px 8px; align-items: center; }
+.st-h { font-size: 12px; color: var(--text-3); font-weight: 600; }
+.st-name { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--text-2); padding-right: 4px; }
+.st-name.now { color: var(--accent); }
+.st-cell { display: flex; align-items: center; gap: 4px; background: var(--card); border: 0.5px solid var(--hairline); border-radius: 10px; padding: 0 10px; }
+.care-block .st-cell { background: var(--bg); }
+.st-cell input { width: 100%; min-width: 0; border: 0; background: none; padding: 9px 0; font-size: 16px; color: var(--text); }
+.st-cell input:focus-visible { outline: none; }
+.st-cell:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.st-cell span { color: var(--text-3); font-size: 13px; }
+.season-table .st-name.now + .st-cell, .season-table .st-name.now + .st-cell + .st-cell { border: 1.5px solid var(--accent); }
+.st-cell:has(input:disabled) { opacity: 0.45; }
+.next-care { display: flex; flex-direction: column; gap: 10px; }
+.next-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 15px; }
+.tag { background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.next-change { margin: 0; }
+.st-cell:has(input:placeholder-shown) span { visibility: hidden; }

@@ -18,11 +18,15 @@ Abre http://localhost:8767 (o usa la configuración `mijardin` del panel de prev
 | Archivo | Qué hace |
 |---|---|
 | `app/app.js` | Pantallas (Hoy, Plantas, Ajustes), fichas, formulario y guardado en `localStorage` |
-| `app/rules.js` | Reglas puras: próximo riego/abonado y cómo lo cambia el tiempo (lluvia, calor, helada, viento). Umbrales en `LIMITS` |
+| `app/rules.js` | Reglas puras: estación actual (meteorológica, invertida en el hemisferio sur), próximo riego/abonado con el intervalo de esa estación y cómo lo cambia el tiempo (lluvia, calor, helada, viento). Umbrales en `LIMITS` |
 | `app/weather.js` | Previsión de Open-Meteo (sin clave), con los 2 días anteriores para saber si llovió ayer |
 | `app/calendar.js` | Exporta los riegos y abonados como eventos repetidos `.ics` |
 | `app/sw.js` | Service worker: instalación y, en la fase 2, recepción del aviso diario |
 | `worker/` | Backend en Cloudflare (`my-garden-api`): ✨ Rellenar con IA. Ver abajo |
+
+## Publicar una versión
+
+Los archivos llevan `?v=AAAAMMDDx` (en `index.html`, en los `import` de `app.js` y en `calendar.js`). Al publicar cambios en `app/`, sube ese número en todos a la vez: así el navegador no mezcla un archivo nuevo con otro viejo de su caché.
 
 ## Fases
 
@@ -39,11 +43,11 @@ Cloudflare Worker en https://my-garden-api.tempcheck-app.workers.dev
 | Ruta | Qué hace |
 |---|---|
 | `GET /health` | Comprobación |
-| `POST /care` | `{ name, lat, lon, month, place }` → ficha de cuidados (especie, riego, abono, heladas, notas, confianza). Cabecera `X-Access-Code` obligatoria |
+| `POST /care` | `{ name, lat, lon, place }` → ficha de cuidados para todo el año: especie, `seasons` (riego y abono por estación), heladas, notas y confianza. Si llega `month` (versiones antiguas de la app), añade también `waterEvery`/`feedEvery` de esa estación. Cabecera `X-Access-Code` obligatoria |
 
 - **Proveedor de IA:** `PROVIDER` y `MODEL` en `wrangler.toml`. Hoy usa Workers AI (gratis) con `@cf/qwen/qwen3.8-27b`, elegido tras comparar con Gemma 4 y Llama 3.3 70B. Para pasar a Claude, se añade un proveedor en `src/worker.js` y se cambia `PROVIDER`.
 - **Protecciones:** solo acepta peticiones desde la web publicada y desde localhost (`ALLOWED_ORIGINS`), exige el código de acceso (secreto `ACCESS_CODE`, copia local en `worker/.access-code`, que no se sube a git), y tiene un tope de `DAILY_LIMIT` llamadas al día.
-- **Memoria:** guarda cada respuesta 90 días por planta, zona de ~100 km y estación, así que repetir una planta no gasta. No guarda las respuestas de confianza baja.
+- **Memoria:** guarda cada respuesta 180 días por planta y zona de ~100 km (vale para todo el año), así que repetir una planta no gasta. No guarda las respuestas de confianza baja.
 
 ```bash
 cd worker
@@ -56,5 +60,7 @@ echo 'ACCESS_CODE=local-test' > .dev.vars && npx wrangler dev --port 8788   # pr
 ## Backlog (ideas aparcadas)
 
 - **Separar «Nombre» y «Tipo de planta» en el formulario.** El nombre es libre («Olivo del patio»); el tipo («olivo») es lo que se consulta a la IA y la clave de la memoria compartida del Worker. Así se aprovecha mejor la memoria y las respuestas son más precisas. Idea: autocompletar el tipo con las plantas que ya están en memoria. Aparcado el 2026-09-29: primero, pruebas de uso.
-- **Las notas de la IA suponen siempre maceta.** La consulta se lanza en el paso 1, antes de saber si la planta está en maceta o en suelo, así que el prompt pide la pauta para maceta mediana. Opciones: pedir notas neutras, o pasar maceta/suelo y volver a consultar si cambia. Detectado el 2026-09-29.
+- **Los días de riego de la IA suponen maceta.** Las notas ya son neutras (2026-10-01), pero los intervalos se piden para maceta mediana; en suelo suelen bastar riegos más espaciados. Opciones: pedir también la pauta para suelo, o alargar los intervalos al elegir «Suelo». Detectado el 2026-09-29.
 - **Unificar emojis e iconos.** Los controles (pestañas, interruptores, heladas) usan iconos de línea que toman el color del estado; el contenido (previsión, tareas, fichas sin foto, avisos) sigue con emojis. Si se quiere un estilo único, pasar también el contenido a iconos. Apuntado el 2026-10-01.
+- **Ajustar el riego cuando el tiempo se sale de lo normal.** La pauta por estación supone un año normal; la capa del tiempo solo reacciona a lluvia (≥5 mm) y calor fuerte (≥32°). Un abril seco y caluroso (25°, semanas sin llover) no adelanta el riego. Idea: comparar temperatura y lluvia recientes y previstas con lo normal para la fecha (como hace TempCheck) y acortar o alargar el intervalo. Apuntado el 2026-10-01.
+- **Datos reales del clima local para la IA.** Hoy la IA usa lo que «sabe» del clima de cada lugar; las diferencias entre zonas (p. ej. Bilbao frente a Madrid) salen pequeñas. Idea: enviarle las temperaturas y lluvias normales de la zona por estación. Apuntado el 2026-10-01.
