@@ -222,14 +222,28 @@ function plantForm(id) {
         <label class="field">Regar cada (días)<input name="waterEvery" type="number" min="0" max="90" inputmode="numeric" value="${p.waterEvery || ""}" /></label>
         <label class="field">Abonar cada (días)<input name="feedEvery" type="number" min="0" max="365" inputmode="numeric" value="${p.feedEvery || ""}" /></label>
       </div>
-      <label class="check"><input type="checkbox" name="rainReaches" ${p.rainReaches ? "checked" : ""} /><span>Le llega la lluvia<small>Si llueve, te diremos que no hace falta regar.</small></span></label>
-      <label class="check"><input type="checkbox" name="inPot" ${p.inPot ? "checked" : ""} /><span>Está en maceta<small>Se seca antes con calor y sufre con el viento.</small></span></label>
-      <label class="check"><input type="checkbox" name="frostSensitive" ${p.frostSensitive ? "checked" : ""} /><span>Sensible a heladas<small>Te avisaremos para protegerla.</small></span></label>
+      ${radioSeg("inPot", "Plantada en", p.inPot, [[true, "pot", "Maceta"], [false, "ground", "Suelo"]])}
+      ${radioSeg("rainReaches", "La lluvia", p.rainReaches, [[true, "rain", "Le llega"], [false, "umbrella", "A cubierto"]])}
+      <label class="switch-row">
+        <span>${ICONS.snow}Sensible a heladas</span>
+        <input type="checkbox" role="switch" name="frostSensitive" class="switch-input" ${p.frostSensitive ? "checked" : ""} />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
       <label class="field">Notas<textarea name="notes" class="autogrow" rows="6" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
       <button class="btn block" type="submit">Guardar</button>
     </form>`);
   $("plantForm").dataset.id = id ?? "";
   autogrow($("plantForm").elements.notes);
+}
+
+// Same segmented look as the new-plant step 2, but with real radio inputs so the edit form
+// reads them through FormData without redrawing.
+function radioSeg(name, label, current, options) {
+  return `
+    <div class="seg-label" id="eseg-${name}">${label}</div>
+    <div class="seg" role="radiogroup" aria-labelledby="eseg-${name}">
+      ${options.map(([value, icon, text]) => `<label><input type="radio" name="${name}" value="${value}" ${current === value ? "checked" : ""} />${ICONS[icon]}${text}</label>`).join("")}
+    </div>`;
 }
 
 // Notes box grows with its text so a whole paragraph is readable without scrolling inside it.
@@ -641,8 +655,8 @@ document.addEventListener("submit", (e) => {
     zone: f.get("zone").trim(),
     waterEvery: Math.max(0, parseInt(f.get("waterEvery"), 10) || 0),
     feedEvery: Math.max(0, parseInt(f.get("feedEvery"), 10) || 0),
-    rainReaches: f.has("rainReaches"),
-    inPot: f.has("inPot"),
+    rainReaches: f.get("rainReaches") === "true",
+    inPot: f.get("inPot") === "true",
     frostSensitive: f.has("frostSensitive"),
     notes: f.get("notes").trim(),
     photo: draftPhoto,

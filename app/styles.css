@@ -129,9 +129,6 @@ dialog#sheet::backdrop { background: rgba(0, 0, 0, 0.35); }
   background: var(--card); border: 0.5px solid var(--hairline); border-radius: 12px; padding: 10px 12px; font-size: 16px; font-weight: 400; color: var(--text); width: 100%;
 }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; background: var(--card); border-radius: 12px; padding: 10px 12px; border: 0.5px solid var(--hairline); }
-.check input { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--accent); flex: none; }
-.check small { display: block; color: var(--text-2); font-size: 13px; }
 .photo-pick { display: flex; align-items: center; gap: 12px; }
 .photo-pick img, .photo-pick .thumb { width: 72px; height: 72px; border-radius: 14px; object-fit: cover; }
 
@@ -224,3 +221,13 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 .ai-notes p { margin: 0; }
 .ai-notes:not(.open) p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ai-notes .more { margin-top: 4px; color: var(--accent); font-weight: 600; font-size: 13px; }
+
+/* Edit form: the same controls built on real inputs (radio / checkbox) */
+.seg label { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 6px; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--text-2); cursor: pointer; position: relative; }
+.seg input, .switch-input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.seg label:has(input:checked) { background: var(--card); color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.seg label:has(input:focus-visible), .switch-row:has(.switch-input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (prefers-color-scheme: dark) { .seg label:has(input:checked) { background: #3a3a3c; } }
+label.switch-row { cursor: pointer; }
+.switch-row:has(.switch-input:checked) .switch { background: var(--accent); }
+.switch-row:has(.switch-input:checked) .switch::after { transform: translateX(18px); }
