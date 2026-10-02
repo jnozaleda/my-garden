@@ -137,11 +137,11 @@ const providers = {
     }
   },
   // Google Gemini (free tier from AI Studio; key in the GEMINI_API_KEY secret, model in GEMINI_MODEL).
-  async gemini(env, messages, schema = CARE_SCHEMA) {
+  async gemini(env, messages, schema = CARE_SCHEMA, name, model = env.GEMINI_MODEL) {
     if (!env.GEMINI_API_KEY) throw new Error("no GEMINI_API_KEY");
     const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
     // "High demand" 503s are usually brief: one retry after 2 s before falling to the next provider.
-    const call = () => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent`, {
+    const call = () => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY.trim() },
       body: JSON.stringify({
@@ -153,7 +153,7 @@ const providers = {
     });
     let res = await call();
     if (res.status === 503) { await new Promise((r) => setTimeout(r, 2000)); res = await call(); }
-    if (!res.ok) throw new Error(`gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) throw new Error(`gemini ${res.status}: ${(await res.text()).slice(0, 1500)}`);
     const out = await res.json();
     const text = out?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
     try { return JSON.parse(text); } catch {
@@ -162,13 +162,15 @@ const providers = {
   },
 };
 
-// PROVIDER is a comma-separated chain ("gemini,workers-ai"): the first that answers wins, so a
-// quota or outage at one falls through to the next.
-const chain = (env) => String(env.PROVIDER).split(",").map((p) => p.trim()).filter((p) => providers[p]);
+// PROVIDER is a comma-separated chain ("gemini:gemini-flash-latest,workers-ai"): the first that
+// answers wins, so a quota or outage at one falls through to the next. "name:model" picks the model
+// (each Gemini model has its own free daily quota, only 20 for Flash on 2026-10-02).
+const chain = (env) => String(env.PROVIDER).split(",").map((p) => p.trim()).filter((p) => providers[p.split(":")[0]]);
 async function askAI(env, messages, schema, name) {
   let last;
   for (const p of chain(env)) {
-    try { return { from: p, out: await providers[p](env, messages, schema, name) }; } catch (err) {
+    const [kind, model] = p.split(":");
+    try { return { from: p, out: await providers[kind](env, messages, schema, name, model || undefined) }; } catch (err) {
       console.error("provider failed", p, err?.message);
       last = err;
     }
