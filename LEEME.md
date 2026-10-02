@@ -61,11 +61,6 @@ npx wrangler secret put ACCESS_CODE       # cambiar el código de acceso
 echo 'ACCESS_CODE=local-test' > .dev.vars && npx wrangler dev --port 8788   # probar en local
 ```
 
-## Backlog (ideas aparcadas)
+## Backlog
 
-- **Separar «Nombre» y «Tipo de planta» en el formulario.** El nombre es libre («Olivo del patio»); el tipo («olivo») es lo que se consulta a la IA y la clave de la memoria compartida del Worker. Así se aprovecha mejor la memoria y las respuestas son más precisas. Idea: autocompletar el tipo con las plantas que ya están en memoria. Aparcado el 2026-09-29: primero, pruebas de uso.
-- **Los días de riego de la IA suponen maceta.** Las notas ya son neutras (2026-10-01), pero los intervalos se piden para maceta mediana; en suelo suelen bastar riegos más espaciados. Opciones: pedir también la pauta para suelo, o alargar los intervalos al elegir «Suelo». Detectado el 2026-09-29.
-- **Unificar emojis e iconos.** Los controles (pestañas, interruptores, heladas) usan iconos de línea que toman el color del estado; el contenido (previsión, tareas, fichas sin foto, avisos) sigue con emojis. Si se quiere un estilo único, pasar también el contenido a iconos. Apuntado el 2026-10-01.
-- **Ajustar el riego cuando el tiempo se sale de lo normal.** La pauta por estación supone un año normal; la capa del tiempo solo reacciona a lluvia (≥5 mm) y calor fuerte (≥32°). Un abril seco y caluroso (25°, semanas sin llover) no adelanta el riego. Idea: comparar temperatura y lluvia recientes y previstas con lo normal para la fecha (como hace TempCheck) y acortar o alargar el intervalo. Apuntado el 2026-10-01.
-- **Datos reales del clima local para la IA.** Hoy la IA usa lo que «sabe» del clima de cada lugar; las diferencias entre zonas (p. ej. Bilbao frente a Madrid) salen pequeñas. Idea: enviarle las temperaturas y lluvias normales de la zona por estación. Apuntado el 2026-10-01.
-- **Una ubicación por zona.** Hoy todo el jardín usa el tiempo de una sola ubicación (la de Ajustes); si hubiera plantas en dos sitios (p. ej. Madrid y la sierra), compartirían previsión y avisos. Idea: ubicación opcional por zona, una previsión por ubicación distinta. Aparcado el 2026-10-02: no hace falta por ahora.
+El backlog vive en GitHub Issues, en el repositorio privado [jnozaleda/mygarden-backlog](https://github.com/jnozaleda/mygarden-backlog/issues) (desde el 2026-10-02). Las ideas que estaban aquí se pasaron a issues (#7–#17).
