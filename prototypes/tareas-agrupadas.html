@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tareas agrupadas</title>
+<style>
+:root{--bg:#000;--card:#1c1c1e;--hair:#38383a;--text:#fff;--muted:#8e8e93;--green:#6cc47a;--chip:#2c2c2e}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px -apple-system,system-ui,sans-serif;padding:20px 16px}
+.wrap{display:flex;gap:22px;flex-wrap:wrap}.col{flex:1;min-width:320px;max-width:390px}
+h1{font-size:15px;color:var(--muted);font-weight:600;margin:0 0 6px}.note{color:var(--muted);font-size:13.5px;line-height:1.4;margin:0 0 12px;min-height:56px}
+.card{background:var(--card);border-radius:22px;padding:16px}
+.sec{display:flex;justify-content:space-between;font-weight:700;font-size:17px;margin-bottom:8px}.meta{color:var(--muted);font-weight:600;font-size:14px}
+.progress{height:4px;background:var(--chip);border-radius:4px;margin-bottom:6px}.progress span{display:block;height:100%;background:var(--green);border-radius:4px}
+.row{display:flex;gap:12px;padding:12px 0;border-top:.5px solid var(--hair)}.row:first-of-type{border-top:0}
+.box{width:24px;height:24px;border-radius:50%;border:2px solid #636366;flex:none;margin-top:1px;display:grid;place-items:center}
+.box.on{background:var(--green);border-color:var(--green)}.box.on::after{content:"";width:9px;height:5px;border:2px solid #000;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.box.part{border-color:var(--green);background:conic-gradient(var(--green) 33%,transparent 0)}
+.box.sm{width:20px;height:20px}
+.body{flex:1;min-width:0}b{font-weight:600}.how{color:var(--muted);font-size:13.5px;margin-top:2px;line-height:1.35}
+.metaRow{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--chip);border-radius:999px;padding:3px 9px;font-size:12.5px;color:#d1d1d6;font-weight:600}
+.chip svg{width:12px;stroke:var(--green);fill:none;stroke-width:2;stroke-linecap:round}
+.when{font-size:12.5px;color:var(--muted);font-weight:600}
+.all{color:var(--green);font-size:12.5px;font-weight:700}
+.sub{margin:8px 0 0;padding:0;list-style:none}.sub li{display:flex;gap:10px;align-items:center;padding:6px 0;font-size:14px;color:#d1d1d6}
+.sub li.done{color:var(--muted);text-decoration:line-through}
+.fold{color:var(--muted);font-size:13px;font-weight:600;margin-top:6px}
+.dim{opacity:.55}
+</style></head><body><div class="wrap" id="root"><div class="col"><h1>Ahora</h1><p class="note">Una fila por planta: «Limpiar hojas secas» sale 3 veces.</p><section class="card"><div class="sec">Esta semana en el jardín <span class="meta">0 de 5</span></div><div class="progress"><span style="width:0%"></span></div>
+<div class="row "><span class="box "></span><div class="body"><b>Limpiar hojas secas</b><div class="how">Retira las hojas secas para evitar hongos.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>plumeria</span><span class="when">Este mes</span></div></div></div>
+<div class="row "><span class="box "></span><div class="body"><b>Limpiar hojas secas</b><div class="how">Quita las hojas amarillas de la base.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>Aspidistra</span><span class="when">Este mes</span></div></div></div>
+<div class="row "><span class="box "></span><div class="body"><b>Limpiar hojas secas</b><div class="how">Elimina flores y hojas marchitas.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>jazmin</span><span class="when">Este mes</span></div></div></div>
+<div class="row "><span class="box "></span><div class="body"><b>Despuntar tallos</b><div class="how">Corta las puntas para que ramifique.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>jazmin</span><span class="when">Hasta el 15 oct</span></div></div></div>
+<div class="row "><span class="box "></span><div class="body"><b>Acolchar</b><div class="how">Pon corteza para guardar humedad.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>jazmin</span><span class="when">Este mes</span></div></div></div></section></div><div class="col"><h1>A · Una fila, un check (recomendada)</h1><p class="note">Las tareas de jardín (limpiar, acolchar, proteger del frío) del mismo tipo y mes se juntan. Un toque las marca en todas las plantas. Podar, trasplantar y cosechar siguen por planta.</p><section class="card"><div class="sec">Esta semana en el jardín <span class="meta">0 de 3</span></div><div class="progress"><span style="width:0%"></span></div>
+<div class="row "><span class="box "></span><div class="body"><b>Limpiar hojas secas</b><div class="how">Retira hojas secas y flores marchitas de todas a la vez.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>plumeria</span><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>Aspidistra</span><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>jazmin</span><span class="when">3 plantas · Este mes</span></div></div></div>
+<div class="row "><span class="box "></span><div class="body"><b>Despuntar tallos</b><div class="how">Corta las puntas para que ramifique.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>jazmin</span><span class="when">Hasta el 15 oct</span></div></div></div>
+<div class="row "><span class="box "></span><div class="body"><b>Acolchar</b><div class="how">Pon corteza para guardar humedad.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>jazmin</span><span class="when">Este mes</span></div></div></div></section></div><div class="col"><h1>B · Una fila con sub-checks</h1><p class="note">Igual, pero puedes marcar planta a planta (por si solo limpias algunas). Más control, más ruido.</p><section class="card"><div class="sec">Esta semana en el jardín <span class="meta">0 de 3</span></div><div class="progress"><span style="width:0%"></span></div>
+<div class="row "><span class="box part"></span><div class="body"><b>Limpiar hojas secas</b><div class="how">Retira hojas secas y flores marchitas.</div><div class="metaRow"><span class="when">1 de 3 plantas · Este mes</span></div><ul class="sub"><li class="done"><span class="box sm on"></span>plumeria</li><li><span class="box sm"></span>Aspidistra</li><li><span class="box sm"></span>jazmin</li></ul></div></div>
+<div class="row "><span class="box "></span><div class="body"><b>Despuntar tallos</b><div class="how">Corta las puntas para que ramifique.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>jazmin</span><span class="when">Hasta el 15 oct</span></div></div></div>
+<div class="row "><span class="box "></span><div class="body"><b>Acolchar</b><div class="how">Pon corteza para guardar humedad.</div><div class="metaRow"><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>jazmin</span><span class="when">Este mes</span></div></div></div></section></div></div>
+</body></html>

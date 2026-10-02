@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002k";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002l";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002k";
-import { buildICS } from "./calendar.js?v=20261002k";
+} from "./rules.js?v=20261002l";
+import { buildICS } from "./calendar.js?v=20261002l";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -149,10 +149,53 @@ function windowLabel(w) {
 
 // «Esta semana en el jardín»: weather checks with plant names, then this month's tasks for all plants.
 let weekAll = false;
+// Garden-wide jobs (clean, mulch, protect from cold) are done for every plant at once, so the
+// week card shows one row per type with all its plants; one tick logs it on each. Pruning,
+// repotting, treating and harvesting stay per plant.
+const GROUPED_TYPES = { clean: "Limpiar hojas secas y flores marchitas", mulch: "Acolchar", protect: "Proteger del frío" };
+function groupGardenTasks(items) {
+  const out = [];
+  const groups = {};
+  for (const x of items) {
+    const type = x.task.type;
+    if (!GROUPED_TYPES[type]) { out.push({ members: [x], title: x.task.title, how: x.task.how, window: x.window, done: x.done }); continue; }
+    if (!groups[type]) out.push(groups[type] = { members: [], how: x.task.how, type });
+    groups[type].members.push(x);
+  }
+  for (const g of Object.values(groups)) {
+    g.title = g.members.length > 1 ? GROUPED_TYPES[g.type] : g.members[0].task.title;
+    g.done = g.members.every((m) => m.done);
+    g.window = g.members.reduce((a, m) => (m.window.lastMonth < a.lastMonth ? m.window : a), g.members[0].window);
+  }
+  return out.sort((a, b) => a.done - b.done);
+}
+
+// Ticks a grouped row: if every plant has it done, undo all; otherwise log it on those missing.
+function toggleTasks(refs) {
+  const today = localToday();
+  const items = refs.map((ref) => {
+    const [id, i] = ref.split(":");
+    const p = plantById(id);
+    const task = p?.yearTasks?.[+i];
+    const w = task && taskWindow(task.months, today);
+    return task && w && { p, task, ref, logs: state.data.log.filter((e) => e.type === "task" && e.ref === ref && e.date >= w.start) };
+  }).filter(Boolean);
+  if (items.every((x) => x.logs.length)) {
+    const drop = new Set(items.flatMap((x) => x.logs));
+    state.data.log = state.data.log.filter((e) => !drop.has(e));
+  } else {
+    const time = new Date().toTimeString().slice(0, 5);
+    for (const x of items.filter((x) => !x.logs.length)) state.data.log.push({ id: uid(), plantId: x.p.id, type: "task", ref: x.ref, date: today, time, note: x.task.title });
+    track("task_done");
+  }
+  save();
+  render();
+}
+
 function gardenWeekCard(today) {
   const { plants, log } = state.data;
   const checks = weatherChecks(plants, state.weather, today);
-  const items = monthTasks(plants, log, today);
+  const items = groupGardenTasks(monthTasks(plants, log, today));
   if (!checks.length && !items.length) return "";
   const done = items.filter((x) => x.done).length;
   const shown = weekAll ? items : items.slice(0, 5);
@@ -161,9 +204,9 @@ function gardenWeekCard(today) {
     ${items.length ? `<div class="progress"><span style="width:${Math.round((done / items.length) * 100)}%"></span></div>` : ""}
     ${checks.map((c) => `<div class="wx-flag">${ICONS[WX_ICON[c.kind]]}<div><b>${esc(c.title)}</b><span>${esc(c.text)}</span></div></div>`).join("")}
     ${shown.map((x) => `<div class="yt-row ${x.done ? "done" : ""}">
-      <button type="button" class="yt-box" data-action="task-toggle" data-id="${x.plant.id}" data-i="${x.i}" aria-pressed="${x.done}" aria-label="${x.done ? "Desmarcar" : "Marcar como hecha"}: ${esc(x.task.title)}">${ICONS.check}</button>
-      <div class="body"><b>${esc(x.task.title)}</b><div class="yt-how">${esc(x.task.how)}</div>
-        <div class="yt-meta"><button type="button" class="yt-plant" data-action="open-plant" data-id="${x.plant.id}">${ICONS.sprout}${esc(x.plant.name)}</button>${x.done ? "" : windowLabel(x.window)}</div></div>
+      <button type="button" class="yt-box" data-action="task-toggle" data-refs="${x.members.map((m) => m.ref).join(",")}" aria-pressed="${x.done}" aria-label="${x.done ? "Desmarcar" : "Marcar como hecha"}: ${esc(x.title)}">${ICONS.check}</button>
+      <div class="body"><b>${esc(x.title)}</b><div class="yt-how">${esc(x.how)}</div>
+        <div class="yt-meta">${x.members.map((m) => `<button type="button" class="yt-plant" data-action="open-plant" data-id="${m.plant.id}">${ICONS.sprout}${esc(m.plant.name)}</button>`).join("")}${x.members.length > 1 ? `<span class="yt-when">${x.members.length} plantas</span>` : ""}${x.done ? "" : windowLabel(x.window)}</div></div>
     </div>`).join("")}
     ${items.length > 5 ? `<button type="button" class="link-btn" data-action="toggle-week-tasks">${weekAll ? "Ver menos" : `Ver las ${items.length}`}</button>` : ""}
   </section>`;
@@ -1205,6 +1248,7 @@ const actions = {
   "skip-rain": (d) => { addLog(d.id, "water", "Lluvia"); track("water_skip_rain"); render(); },
   "undo-log": (d) => { state.data.log = state.data.log.filter((e) => e.id !== d.log); save(); render(); },
   "task-toggle": (d) => {
+    if (d.refs) return toggleTasks(d.refs.split(","));
     const p = plantById(d.id);
     const task = p?.yearTasks?.[+d.i];
     if (!task) return;
