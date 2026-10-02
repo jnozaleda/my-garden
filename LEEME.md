@@ -47,6 +47,8 @@ Cloudflare Worker en https://my-garden-api.tempcheck-app.workers.dev
 | Ruta | Qué hace |
 |---|---|
 | `GET /health` | Comprobación |
+| `POST /event` | `{ device, events: [...] }` (texto plano, sin código) → suma recuentos anónimos al resumen del día (`stats:AAAA-MM-DD` en KV: eventos, dispositivos con hash, uso de la IA). La app los envía en lotes |
+| `GET /stats?days=30` | Resúmenes por día para «Uso de la app». **Siempre** exige el código de acceso, aunque la IA esté abierta |
 | `POST /calendar` | `{ name, species, lat, lon, place }` → calendario de tareas del año (`tasks`: tipo, título, cómo, meses) y riesgos (`risks`: hongos, caracoles, quemaduras, viento). Se pide aparte y en segundo plano porque tarda más. Memoria propia (`cal:`). Cabecera `X-Access-Code` obligatoria |
 | `POST /care` | `{ name, lat, lon, place }` → ficha de cuidados para todo el año: especie, `seasons` (riego y abono por estación), `tips` (un consejo por estación), heladas, notas para todo el año, confianza y `alternatives` (otras plantas que se llaman igual, p. ej. «jazmín» → falso jazmín). Si el nombre no es una planta responde `422 { error: "not_plant" }`. Si llega `month` (versiones antiguas de la app), añade también `waterEvery`/`feedEvery` de esa estación. Cabecera `X-Access-Code` obligatoria |
 

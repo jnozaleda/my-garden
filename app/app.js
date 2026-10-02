@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002h";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002i";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002h";
-import { buildICS } from "./calendar.js?v=20261002h";
+} from "./rules.js?v=20261002i";
+import { buildICS } from "./calendar.js?v=20261002i";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -281,6 +281,9 @@ function moreView() {
       ${row("export-ics", "calendar", "#2f8f4e", "Exportar al calendario", "", true, !state.data.plants.length)}
     </section>
     <p class="group-foot">${isStandalone ? "" : "Para recibir avisos en el iPhone, instala la app: Compartir → «Añadir a pantalla de inicio». "}Los riegos y abonados se añaden a tu calendario como eventos que se repiten por estación; si cambias algo, vuelve a exportarlo.</p>
+    ${aiCode() ? `<div class="group-title">Solo para ti</div>
+    <section class="card list-card settings">${row("open-usage", "chart", "#2f8f4e", "Uso de la app")}</section>
+    <p class="group-foot">Solo aparece en el móvil con tu código de acceso.</p>` : ""}
     <div class="group-title">Datos</div>
     <section class="card list-card settings">
       ${row("export-json", "download", "#6e6e73", "Exportar copia")}
@@ -306,7 +309,56 @@ function upgradesSheet() {
     <div class="sheet-head"><h2>Fichas por actualizar</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
     ${upgradesCard() || `<p class="muted">Todas tus fichas están al día.</p>`}`, "upgrades");
 }
-const SHEET_VIEWS = { ai: aiSheet, upgrades: upgradesSheet };
+// «Uso de la app»: 30 days of anonymous counts from the Worker (needs the access code).
+let usage = null; // null = loading · { error } · { days }
+async function loadUsage() {
+  try {
+    const res = await fetch(`${API}/stats?days=30`, { headers: aiHeaders() });
+    usage = res.ok ? await res.json() : { error: res.status === 401 ? "code" : "ai" };
+  } catch { usage = { error: "network" }; }
+  if (sheet.open && sheet.dataset.view === "usage") usageSheet();
+}
+function usageSheet() {
+  const head = `<div class="sheet-head"><h2>Uso de la app</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>`;
+  if (!usage) return openSheet(`${head}<div class="ai-step"><span class="spinner" aria-hidden="true"></span>Cargando…</div>`, "usage");
+  if (usage.error) return openSheet(`${head}<p class="ai-status warn">${usage.error === "code" ? "El código guardado no es válido para ver el uso." : "No se ha podido cargar el uso. Prueba más tarde."}</p>`, "usage");
+  const days = usage.days;
+  const devicesIn = (n) => new Set(days.slice(-n).flatMap((d) => d.d)).size;
+  const sum = (key, n = 30) => days.slice(-n).reduce((a, d) => a + (d.e[key] ?? 0), 0);
+  const ai = days.reduce((a, d) => ({ calls: a.calls + d.ai.calls, cached: a.cached + d.ai.cached, errors: a.errors + d.ai.errors, notPlant: a.notPlant + d.ai.notPlant, ms: a.ms + d.ai.ms }), { calls: 0, cached: 0, errors: 0, notPlant: 0, ms: 0 });
+  const opens = days.map((d) => d.e.app_open ?? 0);
+  const max = Math.max(4, ...opens);
+  const bars = days.map((d, i) => {
+    const label = `${fmtDate(d.date, { weekday: "short", day: "numeric", month: "short" })} · ${opens[i]} ${opens[i] === 1 ? "apertura" : "aperturas"}`;
+    return `<span class="u-bar ${opens[i] ? "" : "zero"}" style="height:${Math.max(3, (opens[i] / max) * 100)}%" tabindex="0" title="${esc(label)}" aria-label="${esc(label)}"></span>`;
+  }).join("");
+  const total = ai.calls + ai.cached;
+  const row = (icon, label, n, small = "") => `<div class="u-row">${ICONS[icon]}<span>${label}</span><b>${n}${small ? `<small>${small}</small>` : ""}</b></div>`;
+  openSheet(`${head}
+    <section class="card"><div class="sec">Dispositivos activos</div>
+      <div class="u-tiles"><div><span>Hoy</span><b>${devicesIn(1)}</b></div><div><span>7 días</span><b>${devicesIn(7)}</b></div><div><span>30 días</span><b>${devicesIn(30)}</b></div></div></section>
+    <section class="card"><div class="sec">Aperturas por día <span class="meta">30 días · ${opens.reduce((a, b) => a + b, 0)}</span></div>
+      <div class="u-chart" role="img" aria-label="Aperturas por día en los últimos 30 días">${bars}</div>
+      <div class="u-axis"><span>${fmtDate(days[0].date)}</span><span>hoy</span></div>
+      <div class="u-tip" id="usageTip" aria-live="polite"></div></section>
+    <section class="card"><div class="sec">Qué se hace <span class="meta">30 días</span></div>
+      ${row("sprout", "Plantas añadidas", sum("plant_add_ai") + sum("plant_add_manual"), `${sum("plant_add_ai")} con IA · ${sum("plant_add_manual")} a mano`)}
+      ${row("droplet", "Riegos marcados", sum("water_done") + sum("water_skip_rain"), sum("water_skip_rain") ? `${sum("water_skip_rain")} saltados por lluvia` : "")}
+      ${row("flask", "Abonos marcados", sum("feed_done"))}
+      ${row("check", "Tareas del checklist", sum("task_done"))}
+      ${row("refresh", "Fichas actualizadas", sum("upgrade_done"))}</section>
+    <section class="card"><div class="sec">Inteligencia artificial <span class="meta ai-mark">✦ 30 días</span></div>
+      ${row("sparkle", "Consultas", total)}
+      ${row("database", "Desde la memoria (gratis)", ai.cached, total ? `${Math.round((ai.cached / total) * 100)} %` : "")}
+      ${row("clock", "Tiempo medio de respuesta", ai.calls ? `${Math.round(ai.ms / ai.calls / 1000)} s` : "—")}
+      ${row("alert", "Errores", ai.errors + ai.notPlant, ai.notPlant ? `${ai.notPlant} «no es una planta»` : "")}</section>
+    <p class="group-foot">Recuentos anónimos: sin nombres de plantas, notas, ubicación ni datos personales. Cada instalación cuenta como un dispositivo. Los datos empiezan el 2 de octubre de 2026.</p>`, "usage");
+}
+// Tap or hover a bar to read its day.
+document.addEventListener("pointerover", (e) => { const b = e.target.closest?.(".u-bar"); if (b && $("usageTip")) $("usageTip").textContent = b.getAttribute("aria-label"); });
+document.addEventListener("focusin", (e) => { const b = e.target.closest?.(".u-bar"); if (b && $("usageTip")) $("usageTip").textContent = b.getAttribute("aria-label"); });
+
+const SHEET_VIEWS = { ai: aiSheet, upgrades: upgradesSheet, usage: usageSheet };
 
 // ---------- Care sheet upgrades ----------
 // When an improvement needs new data from the AI, it gets a version and an entry here. Plants
@@ -418,6 +470,7 @@ async function upgradePlants() {
         plant.careVersion = CARE_VERSION;
         save();
       }
+      track("upgrade_done");
     } catch (err) {
       if (err.message === "code" || err.message === "limit") { upgrade.stopped = aiErrorText(err.message); break; }
       upgrade.failed += 1;
@@ -861,6 +914,7 @@ async function aiFill(query) {
     form.dataset.alternatives = JSON.stringify(care.alternatives ?? []);
     formDirty = true;
     form.dataset.aiFilled = "1";
+    track("ai_fill_edit");
     cells.forEach((c) => c.classList.add("ai"));
     form.querySelector(".season-table").classList.add("has-ai");
     card.classList.add("done");
@@ -899,6 +953,8 @@ const ICONS = {
   fog: svg('<path d="M5 5h3m4 0h9M3 10h11m4 0h1M5 15h5m4 0h7M3 20h9m4 0h3"/>'),
   wind: svg('<path d="M5 8h8.5a2.5 2.5 0 1 0-2.3-3.2M3 12h15.5a2.5 2.5 0 1 1-2.3 3.2M4 16h5.5a2.5 2.5 0 1 1-2.3 3.2"/>'),
   flame: svg('<path d="M12 11c2.3-3.3.2-7.8-1-9 0 3.4-2.2 5.3-3.7 6.7C5.9 10.1 5 12.3 5 14.3 5 18 8.1 21 12 21s7-3 7-6.7c0-1.7-1.2-4.4-2.3-5.6-2.1 3.4-3.3 3.4-4.7 2.3z"/>'),
+  chart: svg('<path d="M3 3v18h18"/><path d="M7 16v-4M11 16V8M15 16v-6M19 16V5"/>'),
+  database: svg('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>'),
   shovel: svg('<path d="M17 4l3 3M18.5 5.5L11 13M8.5 10.5l5 5-2.5 2.5a3.5 3.5 0 0 1-5 0l0 0a3.5 3.5 0 0 1 0-5z"/>'),
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'),
   chevron: svg('<path d="M9 6l6 6-6 6"/>'),
@@ -1048,6 +1104,7 @@ async function wizLookup() {
 
 function wizSave() {
   if (wiz.ai === "loading") return;
+  track(wiz.ai === "done" ? "plant_add_ai" : "plant_add_manual");
   const zone = wiz.zone.trim();
   const plant = {
     id: uid(), created: localToday(), name: wiz.name, species: wiz.species, zone,
@@ -1112,6 +1169,7 @@ const actions = {
   "open-place": placeSheet,
   "open-ai": () => aiSheet(),
   "open-upgrades": () => upgradesSheet(),
+  "open-usage": () => { usage = null; usageSheet(); loadUsage(); },
   noop: () => {},
   log: (d) => {
     let note = "";
@@ -1120,10 +1178,12 @@ const actions = {
       if (note === null || (d.type === "note" && !note.trim())) return;
     }
     addLog(d.id, d.type, note.trim());
+    if (d.type === "water") track("water_done");
+    if (d.type === "feed") track("feed_done");
     render();
     if (d.reopen) plantSheet(d.id);
   },
-  "skip-rain": (d) => { addLog(d.id, "water", "Lluvia"); render(); },
+  "skip-rain": (d) => { addLog(d.id, "water", "Lluvia"); track("water_skip_rain"); render(); },
   "undo-log": (d) => { state.data.log = state.data.log.filter((e) => e.id !== d.log); save(); render(); },
   "task-toggle": (d) => {
     const p = plantById(d.id);
@@ -1133,7 +1193,7 @@ const actions = {
     const w = taskWindow(task.months, localToday());
     const doneLogs = state.data.log.filter((e) => e.type === "task" && e.ref === ref && w && e.date >= w.start);
     if (doneLogs.length) state.data.log = state.data.log.filter((e) => !doneLogs.includes(e));
-    else state.data.log.push({ id: uid(), plantId: p.id, type: "task", ref, date: localToday(), time: new Date().toTimeString().slice(0, 5), note: task.title });
+    else { state.data.log.push({ id: uid(), plantId: p.id, type: "task", ref, date: localToday(), time: new Date().toTimeString().slice(0, 5), note: task.title }); track("task_done"); }
     save();
     render();
     if (d.reopen) plantSheet(p.id);
@@ -1277,7 +1337,33 @@ document.addEventListener("submit", (e) => {
   if (e.target.dataset.aiFilled) fetchCalendarFor(savedId);
 });
 
+// ---------- Usage (anonymous counts) ----------
+// Event names only (no plant names, notes or location) plus a random id per install, batched and
+// sent to the Worker on start, after a few seconds of activity and when the app goes to the
+// background. See «Uso de la app» in Ajustes (only with the access code).
+const deviceId = store.get("mj_device", null) ?? (() => { const id = crypto.randomUUID(); store.set("mj_device", id); return id; })();
+let eventQueue = store.get("mj_events", []);
+let flushTimer = null;
+function track(name) {
+  eventQueue.push(name);
+  store.set("mj_events", eventQueue);
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flushEvents, 5000);
+}
+function flushEvents() {
+  if (!eventQueue.length) return;
+  const batch = eventQueue.splice(0, 50);
+  store.set("mj_events", eventQueue);
+  // text/plain keeps it a "simple" request (no CORS preflight); keepalive lets it finish on close.
+  fetch(`${API}/event`, { method: "POST", keepalive: true, headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ device: deviceId, events: batch }) })
+    .catch(() => { eventQueue = batch.concat(eventQueue); store.set("mj_events", eventQueue); });
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushEvents(); });
+
 // ---------- Start ----------
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 render();
 loadWeather();
+// One «open» per half hour at most, so switching apps back and forth doesn't inflate it.
+if (Date.now() - store.get("mj_last_open", 0) > 30 * 60000) { store.set("mj_last_open", Date.now()); track("app_open"); }
+setTimeout(flushEvents, 1500);

@@ -255,7 +255,7 @@ async function takeQuota(request, env) {
   return true;
 }
 
-async function handleCare(request, env, headers) {
+async function handleCare(request, env, headers, ctx) {
   if (!authorized(request, env)) {
     return json({ error: "code" }, 401, headers);
   }
@@ -271,25 +271,75 @@ async function handleCare(request, env, headers) {
   // Same plant, same climate cell (~100 km) → same answer, whatever the month.
   const cacheKey = `care:v10:${env.PROVIDER}:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
-  if (cached) return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers);
+  if (cached) { recordAi(env, ctx, "cached"); return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers); }
 
   if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
 
   const provider = providers[env.PROVIDER];
   if (!provider) return json({ error: "provider" }, 500, headers);
   let care;
+  const t0 = Date.now();
   try {
     care = sanitize(await provider(env, careMessages({ name, place, lat, lon })));
   } catch (err) {
     console.error("care failed", env.PROVIDER, env.MODEL, err?.message);
+    recordAi(env, ctx, "error");
     return json({ error: "ai" }, 502, headers);
   }
-  if (!care.isPlant) return json({ error: "not_plant" }, 422, headers);
+  recordAi(env, ctx, "call", Date.now() - t0);
+  if (!care.isPlant) { recordAi(env, ctx, "not_plant"); return json({ error: "not_plant" }, 422, headers); }
   if (care.confidence !== "baja") await env.CACHE.put(cacheKey, JSON.stringify(care), { expirationTtl: CACHE_TTL });
   return json(withLegacy(care, body.month, lat), 200, headers);
 }
 
-async function handleCalendar(request, env, headers) {
+// ---------- Usage stats ----------
+// One KV document per day: { e: { event: count }, d: [device hashes], ai: { calls, cached, errors, notPlant, ms } }.
+// Anonymous counts only: the app sends event names and a random per-install id (hashed here).
+// Read-modify-write, so two writes at the same instant may lose one count: fine for a family app.
+const EVENTS = ["app_open", "plant_add_ai", "plant_add_manual", "water_done", "water_skip_rain", "feed_done", "task_done", "upgrade_done", "ai_fill_edit"];
+const statsKey = (day = new Date().toISOString().slice(0, 10)) => `stats:${day}`;
+async function hashId(id) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`mj:${id}`));
+  return [...new Uint8Array(digest)].slice(0, 6).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function updateStats(env, fn) {
+  const key = statsKey();
+  const doc = (await env.CACHE.get(key, "json")) ?? { e: {}, d: [], ai: { calls: 0, cached: 0, errors: 0, notPlant: 0, ms: 0 } };
+  fn(doc);
+  await env.CACHE.put(key, JSON.stringify(doc), { expirationTtl: 400 * 86400 });
+}
+// AI calls are counted here (not by the app), so they're exact.
+const recordAi = (env, ctx, what, ms = 0) => ctx.waitUntil(updateStats(env, (doc) => {
+  if (what === "cached") doc.ai.cached += 1;
+  else if (what === "error") doc.ai.errors += 1;
+  else if (what === "not_plant") doc.ai.notPlant += 1;
+  else { doc.ai.calls += 1; doc.ai.ms += ms; }
+}).catch(() => {}));
+
+async function handleEvent(request, env, headers) {
+  let body;
+  try { body = JSON.parse(await request.text()); } catch { return json({ error: "input" }, 400, headers); }
+  const device = String(body.device ?? "").slice(0, 64);
+  const events = (Array.isArray(body.events) ? body.events : []).slice(0, 50).filter((e) => EVENTS.includes(e));
+  if (!device || !events.length) return json({ ok: true }, 200, headers);
+  const id = await hashId(device);
+  await updateStats(env, (doc) => {
+    for (const e of events) doc.e[e] = (doc.e[e] ?? 0) + 1;
+    if (!doc.d.includes(id)) doc.d.push(id);
+  });
+  return json({ ok: true }, 200, headers);
+}
+
+// Stats always need the access code, even while the AI is open (REQUIRE_CODE = "off").
+async function handleStats(request, env, headers) {
+  if (!env.ACCESS_CODE || request.headers.get("X-Access-Code") !== env.ACCESS_CODE) return json({ error: "code" }, 401, headers);
+  const n = Math.min(90, Math.max(1, Number(new URL(request.url).searchParams.get("days")) || 30));
+  const days = [...Array(n).keys()].map((i) => new Date(Date.now() - (n - 1 - i) * 86400000).toISOString().slice(0, 10));
+  const docs = await Promise.all(days.map((d) => env.CACHE.get(statsKey(d), "json")));
+  return json({ days: days.map((date, i) => ({ date, ...(docs[i] ?? { e: {}, d: [], ai: { calls: 0, cached: 0, errors: 0, notPlant: 0, ms: 0 } }) })) }, 200, headers);
+}
+
+async function handleCalendar(request, env, headers, ctx) {
   if (!authorized(request, env)) return json({ error: "code" }, 401, headers);
   let body;
   try { body = await request.json(); } catch { return json({ error: "input" }, 400, headers); }
@@ -301,32 +351,37 @@ async function handleCalendar(request, env, headers) {
 
   const cacheKey = `cal:v2:${env.PROVIDER}:${normName(species || name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
-  if (cached) return json({ ...cached, cached: true }, 200, headers);
+  if (cached) { recordAi(env, ctx, "cached"); return json({ ...cached, cached: true }, 200, headers); }
 
   if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
 
   const provider = providers[env.PROVIDER];
   if (!provider) return json({ error: "provider" }, 500, headers);
   let cal;
+  const t0 = Date.now();
   try {
     cal = sanitizeCalendar(await provider(env, calendarMessages({ name, species, place, lat }), CALENDAR_SCHEMA, "calendario"));
   } catch (err) {
     console.error("calendar failed", env.PROVIDER, env.MODEL, err?.message);
+    recordAi(env, ctx, "error");
     return json({ error: "ai" }, 502, headers);
   }
+  recordAi(env, ctx, "call", Date.now() - t0);
   if (cal.tasks.length) await env.CACHE.put(cacheKey, JSON.stringify(cal), { expirationTtl: CACHE_TTL });
   return json(cal, 200, headers);
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const headers = cors(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
     const { pathname } = new URL(request.url);
     if (pathname === "/health") return json({ ok: true, provider: env.PROVIDER, code: codeRequired(env) }, 200, headers);
     if (pathname === "/check") return json({ ok: authorized(request, env) }, authorized(request, env) ? 200 : 401, headers);
-    if (pathname === "/care" && request.method === "POST") return handleCare(request, env, headers);
-    if (pathname === "/calendar" && request.method === "POST") return handleCalendar(request, env, headers);
+    if (pathname === "/care" && request.method === "POST") return handleCare(request, env, headers, ctx);
+    if (pathname === "/calendar" && request.method === "POST") return handleCalendar(request, env, headers, ctx);
+    if (pathname === "/event" && request.method === "POST") return handleEvent(request, env, headers);
+    if (pathname === "/stats") return handleStats(request, env, headers);
     return json({ error: "not_found" }, 404, headers);
   },
 };

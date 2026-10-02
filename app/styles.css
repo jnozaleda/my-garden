@@ -522,3 +522,19 @@ dialog#sheet { touch-action: pan-y; }
 .yc.on { background: var(--accent); } .yc.on.feed { background: #e0a14a; } .yc.on.treat { background: var(--danger); }
 .yc.on.protect { background: var(--info); } .yc.on.mulch { background: var(--warn); }
 .yc.now { outline: 1.5px solid var(--text); outline-offset: 1px; }
+
+/* «Uso de la app» */
+.u-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.u-tiles div { background: var(--bg); border-radius: 12px; padding: 10px; }
+.u-tiles span { display: block; font-size: 12px; color: var(--text-2); } .u-tiles b { font-size: 24px; font-weight: 600; }
+.u-chart { height: 110px; display: flex; align-items: flex-end; gap: 2px; border-bottom: 0.5px solid var(--hairline); }
+.u-bar { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; cursor: pointer; }
+.u-bar.zero { background: var(--track); }
+.u-bar:hover, .u-bar:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+.u-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); margin-top: 4px; }
+.u-tip { font-size: 12px; color: var(--text-2); min-height: 16px; margin-top: 6px; text-align: center; }
+.u-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 0.5px solid var(--hairline); font-size: 14px; }
+.u-row:first-of-type { border-top: 0; padding-top: 0; }
+.u-row .icon { width: 18px; height: 18px; color: var(--text-2); flex: none; }
+.u-row span { flex: 1; }
+.u-row b { font-weight: 600; text-align: right; } .u-row small { display: block; font-size: 12px; font-weight: 400; color: var(--text-2); }
