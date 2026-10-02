@@ -233,7 +233,27 @@ function withLegacy(care, month, lat) {
   return { ...care, waterEvery: now.water, feedEvery: now.feed };
 }
 
-const authorized = (request, env) => Boolean(env.ACCESS_CODE) && request.headers.get("X-Access-Code") === env.ACCESS_CODE;
+// REQUIRE_CODE = "off" opens the AI without the access code (sharing with family); the per-IP
+// and global daily limits below still apply. Turn it back on before moving to a paid provider.
+const codeRequired = (env) => env.REQUIRE_CODE !== "off";
+const authorized = (request, env) => !codeRequired(env) || (Boolean(env.ACCESS_CODE) && request.headers.get("X-Access-Code") === env.ACCESS_CODE);
+
+// Counts one AI call against today's limits: global (DAILY_LIMIT) and per connection
+// (IP_DAILY_LIMIT, IP hashed so it isn't stored). Returns false when either is used up.
+async function takeQuota(request, env) {
+  const today = new Date().toISOString().slice(0, 10);
+  const ip = request.headers.get("CF-Connecting-IP") ?? "local";
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${today}:${ip}`));
+  const ipKey = `ipcount:${today}:${[...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+  const countKey = `count:${today}`;
+  const [used, usedByIp] = await Promise.all([env.CACHE.get(countKey), env.CACHE.get(ipKey)]).then((v) => v.map((x) => Number(x) || 0));
+  if (used >= Number(env.DAILY_LIMIT) || usedByIp >= Number(env.IP_DAILY_LIMIT ?? env.DAILY_LIMIT)) return false;
+  await Promise.all([
+    env.CACHE.put(countKey, String(used + 1), { expirationTtl: 2 * 86400 }),
+    env.CACHE.put(ipKey, String(usedByIp + 1), { expirationTtl: 2 * 86400 }),
+  ]);
+  return true;
+}
 
 async function handleCare(request, env, headers) {
   if (!authorized(request, env)) {
@@ -253,11 +273,7 @@ async function handleCare(request, env, headers) {
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const countKey = `count:${today}`;
-  const used = Number(await env.CACHE.get(countKey)) || 0;
-  if (used >= Number(env.DAILY_LIMIT)) return json({ error: "limit" }, 429, headers);
-  await env.CACHE.put(countKey, String(used + 1), { expirationTtl: 2 * 86400 });
+  if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
 
   const provider = providers[env.PROVIDER];
   if (!provider) return json({ error: "provider" }, 500, headers);
@@ -287,10 +303,7 @@ async function handleCalendar(request, env, headers) {
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) return json({ ...cached, cached: true }, 200, headers);
 
-  const countKey = `count:${new Date().toISOString().slice(0, 10)}`;
-  const used = Number(await env.CACHE.get(countKey)) || 0;
-  if (used >= Number(env.DAILY_LIMIT)) return json({ error: "limit" }, 429, headers);
-  await env.CACHE.put(countKey, String(used + 1), { expirationTtl: 2 * 86400 });
+  if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
 
   const provider = providers[env.PROVIDER];
   if (!provider) return json({ error: "provider" }, 500, headers);
@@ -310,7 +323,7 @@ export default {
     const headers = cors(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
     const { pathname } = new URL(request.url);
-    if (pathname === "/health") return json({ ok: true, provider: env.PROVIDER }, 200, headers);
+    if (pathname === "/health") return json({ ok: true, provider: env.PROVIDER, code: codeRequired(env) }, 200, headers);
     if (pathname === "/check") return json({ ok: authorized(request, env) }, authorized(request, env) ? 200 : 401, headers);
     if (pathname === "/care" && request.method === "POST") return handleCare(request, env, headers);
     if (pathname === "/calendar" && request.method === "POST") return handleCalendar(request, env, headers);

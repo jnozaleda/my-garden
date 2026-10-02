@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002g";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002h";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002g";
-import { buildICS } from "./calendar.js?v=20261002g";
+} from "./rules.js?v=20261002h";
+import { buildICS } from "./calendar.js?v=20261002h";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -263,7 +263,7 @@ function plantsView() {
 
 function moreView() {
   const loc = state.loc ?? DEFAULT_LOC;
-  const aiOn = store.get("mj_ai_code", "") && codeStatus?.kind !== "warn";
+  const aiOn = aiOpen === true || (aiCode() && codeStatus?.kind !== "warn");
   const pending = pendingUpgrades().length;
   const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   const row = (action, icon, color, label, value = "", chevron = true, disabled = false) =>
@@ -294,11 +294,11 @@ function moreView() {
 function aiSheet() {
   openSheet(`
     <div class="sheet-head"><h2>Asistente IA</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
-    <p class="muted">Al añadir una planta, la IA propone sola sus cuidados por estación para tu zona; también puedes pedírselo desde Editar. Necesita tu código de acceso.</p>
-    <form id="aiCodeForm" class="row">
+    <p class="muted">Al añadir una planta, la IA propone sola sus cuidados por estación para tu zona; también puedes pedírselo desde Editar.${aiOpen ? " Ahora mismo está abierta: no hace falta código." : " Necesita tu código de acceso."}</p>
+    ${aiOpen ? "" : `<form id="aiCodeForm" class="row">
       <input type="text" name="code" class="code-input" placeholder="Código de acceso" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(store.get("mj_ai_code", ""))}" />
       <button class="btn small" type="submit">Guardar</button>
-    </form>
+    </form>`}
     ${codeStatus ? `<p class="ai-status ${codeStatus.kind}">${esc(codeStatus.text)}</p>` : ""}`, "ai");
 }
 function upgradesSheet() {
@@ -750,18 +750,25 @@ const altButtons = (alts, action) => alts?.length
   : "";
 const altQuery = (a) => `${a.commonName} (${a.species})`;
 
+// Whether the AI can be used: the Worker may run without the access code (REQUIRE_CODE = "off"),
+// which /health reports; otherwise a saved code is needed. Unknown until /health answers.
+let aiOpen = null;
+const aiCode = () => store.get("mj_ai_code", "");
+const hasAI = () => aiOpen === true || Boolean(aiCode());
+const aiHeaders = () => ({ "Content-Type": "application/json", ...(aiCode() ? { "X-Access-Code": aiCode() } : {}) });
+fetch(`${API}/health`).then((r) => r.json()).then((h) => { aiOpen = h.code === false; render(); }).catch(() => {});
+
 // Resolves to the care sheet, or throws an Error whose message is a key of AI_ERRORS
 // ("code", "limit") or "timeout" / "network" / "ai".
 async function requestCare(name) {
-  const code = store.get("mj_ai_code", "");
-  if (!code) throw new Error("code");
+  if (aiOpen === false && !aiCode()) throw new Error("code");
   const loc = state.loc ?? DEFAULT_LOC;
   let res;
   try {
     res = await fetch(`${API}/care`, {
       method: "POST",
       signal: AbortSignal.timeout(30000),
-      headers: { "Content-Type": "application/json", "X-Access-Code": code },
+      headers: aiHeaders(),
       body: JSON.stringify({ name, lat: loc.lat, lon: loc.lon, place: loc.name }),
     });
   } catch (err) {
@@ -774,15 +781,14 @@ async function requestCare(name) {
 
 // The year calendar comes from its own endpoint and is slower: asked in the background.
 async function requestCalendar(name, species) {
-  const code = store.get("mj_ai_code", "");
-  if (!code) throw new Error("code");
+  if (aiOpen === false && !aiCode()) throw new Error("code");
   const loc = state.loc ?? DEFAULT_LOC;
   let res;
   try {
     res = await fetch(`${API}/calendar`, {
       method: "POST",
       signal: AbortSignal.timeout(90000),
-      headers: { "Content-Type": "application/json", "X-Access-Code": code },
+      headers: aiHeaders(),
       body: JSON.stringify({ name, species, lat: loc.lat, lon: loc.lon, place: loc.name }),
     });
   } catch (err) {
@@ -822,7 +828,7 @@ async function aiFill(query) {
   const show = (text, kind = "", extra = "") => { status.hidden = false; status.className = `ai-status ${kind}`; status.innerHTML = esc(text) + extra; };
   const name = form.elements.name.value.trim();
   if (!name) { form.elements.name.focus(); return show("Escribe primero el nombre de la planta.", "warn"); }
-  if (!store.get("mj_ai_code", "")) return show(AI_ERRORS.code, "warn");
+  if (!hasAI()) return show(AI_ERRORS.code, "warn");
 
   const btn = form.querySelector('[data-action="ai-fill"]');
   const label = btn.innerHTML;
@@ -938,7 +944,7 @@ function renderWizard() {
   if (!wiz) return;
   const head = (right) => `<div class="sheet-head"><h2>Nueva planta</h2><div class="row"><span class="muted">${wiz.step} de 2</span>${right}</div></div>`;
   if (wiz.step === 1) {
-    const hasCode = Boolean(store.get("mj_ai_code", ""));
+    const hasCode = hasAI() || aiOpen === null;
     openSheet(`
       ${head(`<button class="btn small secondary" data-action="close">Cancelar</button>`)}
       <form id="wizName" class="sheet-in" style="padding:0">
@@ -1236,7 +1242,7 @@ document.addEventListener("submit", (e) => {
     wiz.step = 2;
     if (changed || wiz.ai === "error" || wiz.ai === "notplant") {
       wiz.care = null;
-      if (store.get("mj_ai_code", "")) return wizLookup();
+      if (hasAI() || aiOpen === null) return wizLookup();
       wiz.ai = "idle";
     }
     renderWizard();
