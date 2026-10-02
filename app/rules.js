@@ -37,6 +37,7 @@ export function monthTasks(plants, log, today) {
   const out = [];
   for (const plant of plants) {
     (plant.yearTasks ?? []).forEach((task, i) => {
+      if (task.off) return; // «No aplica»: removed by the user
       const window = taskWindow(task.months, today);
       if (!window) return;
       const ref = `${plant.id}:${i}`;
@@ -77,7 +78,7 @@ export function weatherChecks(plants, weather, today) {
     out.push({ kind: "heat", title: `Calor ${whenLabel(today, hot.date)} (${Math.round(hot.max)}°)`, text: `Da sombra en las horas centrales a ${names(sunny)}.`, plantIds: sunny.map((p) => p.id) });
   }
   // Automatic irrigation: tell when the timer could pause (rain reached them) or needs checking (heat).
-  const auto = plants.filter((p) => p.autoWater);
+  const auto = plants.filter(irrigated);
   const rainNext = days.slice(t + 1, t + 3).reduce((sum, d) => sum + d.rain, 0);
   const autoRain = auto.filter((p) => p.rainReaches);
   if (autoRain.length && (wet || rainNext >= LIMITS.rainSkipMm)) {
@@ -145,12 +146,17 @@ export function intervalFor(plant, type, season) {
 
 // Next due date for a recurring care type in today's season, or null if it doesn't apply now
 // (no interval, or feeding paused this season).
+// Automatic irrigation running for this plant: it has it (autoWater) and its zone hasn't paused it.
+export const irrigated = (plant) => Boolean(plant.autoWater && !plant.irrigationOff);
+
 export function nextDue(plant, log, type, today, lat) {
   // Automatic irrigation waters it: no watering turns (weather checks speak to the timer instead).
-  if (type === "water" && plant.autoWater) return null;
+  if (type === "water" && irrigated(plant)) return null;
   const every = intervalFor(plant, type, seasonOf(today, lat));
   if (!every) return null;
-  const due = addDays(lastDone(log, plant.id, type) ?? plant.created, every);
+  // Irrigation just paused: the timer watered it until then, so count from the pause.
+  const since = [lastDone(log, plant.id, type) ?? plant.created, type === "water" ? plant.irrigationOffSince : null].filter(Boolean).sort().pop();
+  const due = addDays(since, every);
   // Feeding resumes with the season: count from its first day, not from last year's feed.
   if (type === "feed") {
     const start = seasonStart(today, lat);

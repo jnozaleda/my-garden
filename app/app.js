@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002m";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002p";
 import {
-  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002m";
-import { buildICS } from "./calendar.js?v=20261002m";
+  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated,
+} from "./rules.js?v=20261002p";
+import { buildICS } from "./calendar.js?v=20261002p";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -31,6 +31,12 @@ const state = {
 };
 
 function save() {
+  // A paused zone switches irrigation off for its plants (they keep «tiene riego»).
+  for (const p of state.data.plants) {
+    p.irrigationOff = Boolean(p.autoWater && pausedZones().includes(p.zone || ""));
+    if (!p.irrigationOff) delete p.irrigationOffSince;
+    else p.irrigationOffSince ??= localToday();
+  }
   if (!store.set("mj_data", state.data)) alert("No se ha podido guardar: el almacenamiento del navegador está lleno. Prueba con fotos más pequeñas o exporta una copia.");
 }
 
@@ -192,6 +198,21 @@ function toggleTasks(refs) {
   render();
 }
 
+// «No aplica»: hides an AI year task for this plant (e.g. thinning grapes on a young vine). The task
+// is marked off, not deleted, so log refs (plant:index) stay valid; its title is remembered so a
+// fresh calendar from the AI doesn't bring it back. «Recuperar» in the year calendar undoes it.
+const skipBtn = (x, reopen = false) => `<button type="button" class="yt-skip" data-action="task-skip" data-id="${x.plant.id}" data-i="${x.i}" ${reopen ? 'data-reopen="1"' : ""}>No aplica</button>`;
+const removedLink = (p) => {
+  const n = (p.yearTasks ?? []).filter((t) => t.off).length;
+  return n ? `<button type="button" class="link-btn" data-action="task-restore" data-id="${p.id}">Recuperar ${n === 1 ? "1 tarea quitada" : `${n} tareas quitadas`}</button>` : "";
+};
+const sameTask = (a, b) => normTitle(a) === normTitle(b);
+const normTitle = (t) => String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+function applyCalendar(plant, cal) {
+  plant.yearTasks = (cal.tasks ?? []).map((t) => (plant.skippedTasks ?? []).some((s) => sameTask(s, t.title)) ? { ...t, off: true } : t);
+  plant.risks = cal.risks ?? [];
+}
+
 function gardenWeekCard(today) {
   const { plants, log } = state.data;
   const checks = weatherChecks(plants, state.weather, today);
@@ -206,7 +227,7 @@ function gardenWeekCard(today) {
     ${shown.map((x) => `<div class="yt-row ${x.done ? "done" : ""}">
       <button type="button" class="yt-box" data-action="task-toggle" data-refs="${x.members.map((m) => m.ref).join(",")}" aria-pressed="${x.done}" aria-label="${x.done ? "Desmarcar" : "Marcar como hecha"}: ${esc(x.title)}">${ICONS.check}</button>
       <div class="body"><b>${esc(x.title)}</b><div class="yt-how">${esc(x.how)}</div>
-        <div class="yt-meta">${x.members.map((m) => `<button type="button" class="yt-plant" data-action="open-plant" data-id="${m.plant.id}">${ICONS.sprout}${esc(m.plant.name)}</button>`).join("")}${x.members.length > 1 ? `<span class="yt-when">${x.members.length} plantas</span>` : ""}${x.done ? "" : windowLabel(x.window)}</div></div>
+        <div class="yt-meta">${x.members.map((m) => `<button type="button" class="yt-plant" data-action="open-plant" data-id="${m.plant.id}">${ICONS.sprout}${esc(m.plant.name)}</button>`).join("")}${x.members.length > 1 ? `<span class="yt-when">${x.members.length} plantas</span>` : ""}${x.done ? "" : windowLabel(x.window)}${x.done || x.members.length > 1 ? "" : skipBtn(x.members[0])}</div></div>
     </div>`).join("")}
     ${items.length > 5 ? `<button type="button" class="link-btn" data-action="toggle-week-tasks">${weekAll ? "Ver menos" : `Ver las ${items.length}`}</button>` : ""}
   </section>`;
@@ -224,7 +245,7 @@ function plantMonthCard(p, today) {
   return `<section class="card"><div class="sec">Este mes · ${month}${p.yearTasks?.length ? ` <span class="ai-mark">✦</span>` : ""}</div>
     ${items.map((x) => `<div class="yt-row right ${x.done ? "done" : ""}">
       <span class="yt-kind ${x.task.type}">${ICONS[YEAR_TYPE[x.task.type]?.[0] ?? "check"]}</span>
-      <div class="body"><b>${esc(x.task.title)}</b><div class="yt-how">${esc(x.task.how)}</div>${x.done ? "" : `<div class="yt-meta">${windowLabel(x.window)}</div>`}</div>
+      <div class="body"><b>${esc(x.task.title)}</b><div class="yt-how">${esc(x.task.how)}</div>${x.done ? "" : `<div class="yt-meta">${windowLabel(x.window)}${skipBtn(x, true)}</div>`}</div>
       <button type="button" class="yt-box" data-action="task-toggle" data-id="${p.id}" data-i="${x.i}" data-reopen="1" aria-pressed="${x.done}" aria-label="${x.done ? "Desmarcar" : "Marcar como hecha"}: ${esc(x.task.title)}">${ICONS.check}</button>
     </div>`).join("")}
     ${checks.map((c) => `<div class="yt-row right"><span class="yt-kind weather">${ICONS[WX_ICON[c.kind]]}</span><div class="body"><b>${esc(c.title)}</b><div class="yt-how">${esc(c.text)}</div><div class="yt-meta"><span class="yt-when wx">${ICONS.cloud}Por el tiempo</span></div></div></div>`).join("")}
@@ -237,15 +258,15 @@ function yearCalendarCard(p, today) {
   const feedMonths = p.seasons ? [...Array(12).keys()].map((i) => i + 1).filter((m) => intervalFor(p, "feed", seasonOf(`2026-${String(m).padStart(2, "0")}-15`, here().lat))) : [];
   if (feedMonths.length) rows.push(["flask", "Abonado", "feed", feedMonths]);
   const byType = {};
-  for (const t of p.yearTasks ?? []) (byType[t.type] ??= new Set()), t.months.forEach((m) => byType[t.type].add(m));
+  for (const t of (p.yearTasks ?? []).filter((t) => !t.off)) (byType[t.type] ??= new Set()), t.months.forEach((m) => byType[t.type].add(m));
   for (const [type, months] of Object.entries(byType)) rows.push([YEAR_TYPE[type]?.[0] ?? "check", YEAR_TYPE[type]?.[1] ?? "Otros", type, [...months]]);
-  if (rows.length < 2) return "";
+  if (rows.length < 2) return removedLink(p) ? `<section class="card"><div class="sec">Calendario del año</div>${removedLink(p)}</section>` : "";
   const now = Number(today.slice(5, 7));
   return `<section class="card"><div class="sec">Calendario del año${p.yearTasks?.length ? ` <span class="ai-mark">✦</span>` : ""}</div>
     <div class="year"><span></span>${"EFMAMJJASOND".split("").map((m, i) => `<span class="ym ${i + 1 === now ? "now" : ""}">${m}</span>`).join("")}
     ${rows.map(([icon, label, cls, months]) => `<span class="yr">${ICONS[icon]}${label}</span>` +
       [...Array(12).keys()].map((i) => `<span class="yc ${months.includes(i + 1) ? `on ${cls}` : ""} ${i + 1 === now ? "now" : ""}"></span>`).join("")).join("")}
-    </div></section>`;
+    </div>${removedLink(p)}</section>`;
 }
 const ALERT_ICON = { "🥶": "snow", "🔥": "flame", "💨": "wind" };
 // "mañana", "el martes"
@@ -301,12 +322,13 @@ function plantsView() {
   let html = "";
   for (const zone of zones) {
     const list = plants.filter((p) => (p.zone || "Sin zona") === zone).sort((a, b) => a.name.localeCompare(b.name, "es"));
-    const autoZone = list.every((p) => p.autoWater);
-    html += `<div class="zone-title">${esc(zone)} · ${list.length}${autoZone ? `<span class="zone-auto">${ICONS.drip}Riego automático</span>` : ""}</div><section class="card list-card">` + list.map((p) => {
+    const withIrrigation = list.some((p) => p.autoWater);
+    const paused = pausedZones().includes(zone === "Sin zona" ? "" : zone);
+    html += `<div class="zone-title">${esc(zone)} · ${list.length}${withIrrigation ? `<span class="zone-auto ${paused ? "off" : ""}">${ICONS.drip}${paused ? "Riego pausado" : "Riego encendido"}</span>` : ""}</div><section class="card list-card">` + list.map((p) => {
       // Next watering, coloured: late (red), today (blue), later (grey).
       const due = nextDue(p, log, "water", today, here().lat);
       const n = due ? daysBetween(today, due) : null;
-      const status = p.autoWater ? `<span class="p-status auto">${ICONS.drip}Riego automático</span>` : n === null ? "" : n < 0
+      const status = irrigated(p) ? `<span class="p-status auto">${ICONS.drip}Riego automático</span>` : n === null ? "" : n < 0
         ? `<span class="p-status late">${ICONS.droplet}Regar · atrasado ${-n === 1 ? "1 día" : `${-n} días`}</span>`
         : n === 0 ? `<span class="p-status today">${ICONS.droplet}Regar hoy</span>`
           : `<span class="p-status">${ICONS.droplet}Regar ${n === 1 ? "mañana" : `en ${n} días`}</span>`;
@@ -316,19 +338,20 @@ function plantsView() {
   return html;
 }
 
-// Automatic irrigation: per plant (plant.autoWater) and per zone (state.data.autoZones). Turning a
-// zone on/off sets every plant in it, and new plants added to that zone start with it on.
-const autoZones = () => state.data.autoZones ?? [];
+// Automatic irrigation, two separate things: whether a plant has it (plant.autoWater, set in alta/
+// Editar) and whether it's running in its zone (state.data.pausedZones, «Riego» in Ajustes). Paused,
+// those plants ask for watering again; switched back on, only the ones that have it stop asking.
+const pausedZones = () => state.data.pausedZones ?? [];
 function zonesCard() {
-  const zones = [...new Set(state.data.plants.map((p) => p.zone).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+  const zones = [...new Set(state.data.plants.filter((p) => p.autoWater).map((p) => p.zone || ""))].sort((a, b) => a.localeCompare(b, "es"));
   if (!zones.length) return "";
-  return `<div class="group-title">Riego automático por zona</div>
+  return `<div class="group-title">Riego automático</div>
     <section class="card list-card settings">${zones.map((z) => {
-      const n = state.data.plants.filter((p) => p.zone === z).length;
-      const on = autoZones().includes(z);
-      return `<button type="button" class="l-row switch-row" role="switch" aria-checked="${on}" data-action="zone-auto" data-zone="${esc(z)}"><span class="l-ico" style="background:#1f8f86">${ICONS.drip}</span><span class="l-label">${esc(z)} <span class="muted">· ${n === 1 ? "1 planta" : `${n} plantas`}</span></span><span class="switch" aria-hidden="true"></span></button>`;
+      const n = state.data.plants.filter((p) => p.autoWater && (p.zone || "") === z).length;
+      const on = !pausedZones().includes(z);
+      return `<button type="button" class="l-row switch-row" role="switch" aria-checked="${on}" data-action="zone-auto" data-zone="${esc(z)}"><span class="l-ico" style="background:${on ? "#1f8f86" : "#6e6e73"}">${ICONS.drip}</span><span class="l-label">${esc(z || "Sin zona")} <span class="muted">· ${n === 1 ? "1 planta con riego" : `${n} plantas con riego`}</span></span><span class="switch" aria-hidden="true"></span></button>`;
     }).join("")}</section>
-    <p class="group-foot">Activar una zona lo activa en todas sus plantas y en las nuevas que pongas ahí; también se puede cambiar planta a planta en Editar. Esas plantas no te pedirán riego: te avisaremos si la lluvia o el calor piden tocar el programador.</p>`;
+    <p class="group-foot">Qué plantas tienen riego se marca en cada una (Editar). Aquí lo enciendes o lo pausas por zona: pausado, esas plantas vuelven a pedirte riego; encendido, solo te avisamos si la lluvia o el calor piden tocar el programador.</p>`;
 }
 // The next season's interval, so the timer can be changed in time.
 function autoHint(p, season) {
@@ -482,7 +505,7 @@ const UPGRADES = [
     version: 4,
     label: "calendario de cuidados del año",
     source: "calendar",
-    apply: (plant, cal) => { plant.yearTasks = cal.tasks ?? []; plant.risks = cal.risks ?? []; },
+    apply: (plant, cal) => applyCalendar(plant, cal),
   },
 ];
 const CARE_VERSION = Math.max(...UPGRADES.map((u) => u.version));
@@ -637,7 +660,7 @@ function plantSheet(id) {
     const every = intervalFor(p, type, season);
     const due = nextDue(p, state.data.log, type, today, lat);
     const ico = `<span class="t-ico ${type}">${ICONS[TASK_ICON[type]]}</span>`;
-    if (type === "water" && p.autoWater && every) {
+    if (type === "water" && irrigated(p) && every) {
       return `<div class="n-row">${ico}<div class="body"><b>Riego automático</b><span>Para el programador: cada ${every} días en ${SEASON_LABEL[season].toLowerCase()}${autoHint(p, season)}</span></div></div>`;
     }
     if (due) {
@@ -671,7 +694,7 @@ function plantSheet(id) {
     p.inPot ? ["pot", "Maceta"] : ["ground", "Suelo"],
     p.rainReaches ? ["rain", "Le llega la lluvia"] : ["umbrella", "A cubierto"],
     p.frostSensitive ? ["snow", "Sensible a heladas"] : null,
-    p.autoWater ? ["drip", "Riego automático"] : null,
+    p.autoWater ? ["drip", p.irrigationOff ? "Riego automático (pausado)" : "Riego automático"] : null,
   ].filter(Boolean);
   const LOG_ICON = { water: "droplet", feed: "flask", prune: "scissors", treat: "bug", note: "notes", task: "check" };
   openSheet(`
@@ -955,7 +978,7 @@ async function fetchCalendarFor(plantId) {
   try {
     const cal = await requestCalendar(p.name, p.species);
     const plant = plantById(plantId);
-    if (plant) { plant.yearTasks = cal.tasks ?? []; plant.risks = cal.risks ?? []; plant.careVersion = CARE_VERSION; save(); }
+    if (plant) { applyCalendar(plant, cal); plant.careVersion = CARE_VERSION; save(); }
   } catch { /* stays pending in «Fichas por actualizar» */ }
   calendarPending.delete(plantId);
   render(); if (sheet.open && sheet.dataset.plant === plantId) plantSheet(plantId);
@@ -1087,7 +1110,7 @@ function newPlantWizard() {
     ...PLACE_DEFAULTS, ...store.get("mj_last_place", {}),
     species: "", seasons: structuredClone(DEFAULT_SEASONS), frostSensitive: false, notes: "", newZone: false,
   };
-  wiz.autoWater = autoZones().includes(wiz.zone);
+  wiz.autoWater = false;
   renderWizard();
 }
 
@@ -1252,7 +1275,7 @@ const actions = {
   "new-plant": newPlantWizard,
   "wiz-back": () => { wiz.step = 1; renderWizard(); },
   "wiz-alt": (d) => { wiz.query = altQuery(wiz.care.alternatives[+d.i]); wizLookup(); },
-  "wiz-zone": (d) => { wiz.zone = d.zone; wiz.newZone = false; if (!wiz.touched.autoWater) wiz.autoWater = autoZones().includes(d.zone); renderWizard(); },
+  "wiz-zone": (d) => { wiz.zone = d.zone; wiz.newZone = false; renderWizard(); },
   "wiz-new-zone": () => { wiz.newZone = true; wiz.zone = ""; renderWizard(); },
   "wiz-set": (d) => {
     wiz[d.key] = d.key === "frostSensitive" || d.key === "autoWater" ? !wiz[d.key] : d.value === "true";
@@ -1299,11 +1322,29 @@ const actions = {
     if (d.reopen) plantSheet(p.id);
   },
   "zone-auto": (d) => {
-    const on = !autoZones().includes(d.zone);
-    state.data.autoZones = on ? [...autoZones(), d.zone] : autoZones().filter((z) => z !== d.zone);
-    for (const p of state.data.plants) if ((p.zone || "") === d.zone) p.autoWater = on;
+    const paused = pausedZones().includes(d.zone);
+    state.data.pausedZones = paused ? pausedZones().filter((z) => z !== d.zone) : [...pausedZones(), d.zone];
     save();
     render();
+  },
+  "task-skip": (d) => {
+    const p = plantById(d.id);
+    const task = p?.yearTasks?.[+d.i];
+    if (!task || !confirm(`¿Quitar «${task.title}» de ${p.name}? No volverá a aparecer (puedes recuperarla en su ficha, en el calendario del año).`)) return;
+    task.off = true;
+    p.skippedTasks = [...(p.skippedTasks ?? []), task.title];
+    save();
+    render();
+    if (d.reopen) plantSheet(p.id);
+  },
+  "task-restore": (d) => {
+    const p = plantById(d.id);
+    if (!p) return;
+    for (const t of p.yearTasks ?? []) delete t.off;
+    p.skippedTasks = [];
+    save();
+    render();
+    plantSheet(p.id);
   },
   "toggle-week-tasks": () => { weekAll = !weekAll; render(); },
   "toggle-done": () => { doneOpen = !doneOpen; render(); },
