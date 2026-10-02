@@ -3,7 +3,7 @@
 // season's interval. It's a snapshot: weather changes don't reach the calendar until the webcal
 // subscription (phase 2).
 
-import { CARE, SEASON_LABEL, nextDue, intervalFor, seasonOf, seasonStart, nextSeasonStart, addDays } from "./rules.js?v=20261002l";
+import { CARE, SEASON_LABEL, nextDue, intervalFor, seasonOf, seasonStart, nextSeasonStart, addDays } from "./rules.js?v=20261002m";
 
 const esc = (s) => String(s).replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
 const compact = (iso) => iso.replaceAll("-", "");
@@ -19,7 +19,7 @@ export function buildICS(plants, log, today, lat) {
     from = next;
   }
   for (const plant of plants) {
-    for (const type of ["water", "feed"]) {
+    for (const type of plant.autoWater ? ["feed"] : ["water", "feed"]) {
       periods.forEach(({ season, from, to }, i) => {
         const every = intervalFor(plant, type, season);
         if (!every) return;

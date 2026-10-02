@@ -76,6 +76,17 @@ export function weatherChecks(plants, weather, today) {
   if (hot && sunny.length) {
     out.push({ kind: "heat", title: `Calor ${whenLabel(today, hot.date)} (${Math.round(hot.max)}°)`, text: `Da sombra en las horas centrales a ${names(sunny)}.`, plantIds: sunny.map((p) => p.id) });
   }
+  // Automatic irrigation: tell when the timer could pause (rain reached them) or needs checking (heat).
+  const auto = plants.filter((p) => p.autoWater);
+  const rainNext = days.slice(t + 1, t + 3).reduce((sum, d) => sum + d.rain, 0);
+  const autoRain = auto.filter((p) => p.rainReaches);
+  if (autoRain.length && (wet || rainNext >= LIMITS.rainSkipMm)) {
+    const mm = Math.round(recent.reduce((sum, d) => sum + d.rain, 0) + rainNext);
+    out.push({ kind: "rain", title: "Riego automático: puedes pausarlo", text: `Entre lo que ha llovido y lo que viene, unos ${mm} mm. ${names(autoRain).replace(/^./, (c) => c.toUpperCase())} ${autoRain.length === 1 ? "no necesita" : "no necesitan"} el riego estos días.`, plantIds: autoRain.map((p) => p.id) });
+  }
+  if (hot && auto.length) {
+    out.push({ kind: "heat", title: `Calor: revisa el goteo (${Math.round(hot.max)}° ${whenLabel(today, hot.date)})`, text: `Comprueba que el riego automático llega bien a ${names(auto)} o añade un riego más.`, plantIds: auto.map((p) => p.id) });
+  }
   return out;
 }
 
@@ -135,6 +146,8 @@ export function intervalFor(plant, type, season) {
 // Next due date for a recurring care type in today's season, or null if it doesn't apply now
 // (no interval, or feeding paused this season).
 export function nextDue(plant, log, type, today, lat) {
+  // Automatic irrigation waters it: no watering turns (weather checks speak to the timer instead).
+  if (type === "water" && plant.autoWater) return null;
   const every = intervalFor(plant, type, seasonOf(today, lat));
   if (!every) return null;
   const due = addDays(lastDone(log, plant.id, type) ?? plant.created, every);

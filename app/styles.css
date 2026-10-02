@@ -548,3 +548,9 @@ dialog#sheet { touch-action: pan-y; }
 /* Fertiliser type */
 .feed-type { display: block; font-size: 12px; color: var(--warn); font-weight: 600; margin-top: 2px; }
 .n-row .body > .feed-type { color: var(--warn); }
+
+/* Automatic irrigation */
+.p-status.auto, .zone-auto { color: #3fb8ac; }
+.zone-auto { display: inline-flex; align-items: center; gap: 4px; float: right; font-weight: 600; }
+.zone-auto svg { width: 13px; height: 13px; }
+.l-row.switch-row .switch { margin-left: auto; }

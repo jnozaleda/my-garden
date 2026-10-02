@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Riego automático</title>
+<style>
+:root{--bg:#000;--card:#1c1c1e;--hair:#38383a;--muted:#8e8e93;--green:#6cc47a;--chip:#2c2c2e;--blue:#5aa9e6;--teal:#64d2c8;--amber:#f0b45a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font:15px -apple-system,system-ui,sans-serif;padding:20px 16px}
+.wrap{display:flex;gap:22px;flex-wrap:wrap}.col{flex:1;min-width:320px;max-width:390px}
+h1{font-size:15px;color:var(--muted);font-weight:600;margin:0 0 6px}.note{color:var(--muted);font-size:13.5px;line-height:1.4;margin:0 0 12px;min-height:56px}
+.card{background:var(--card);border-radius:22px;padding:16px;margin-bottom:12px}
+.lbl{font-size:13px;color:var(--muted);font-weight:600;margin:4px 4px 8px}
+svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.sw-row{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:.5px solid var(--hair)}.sw-row:first-child{border-top:0}
+.sw-row span.t{flex:1}.sw{width:46px;height:28px;border-radius:14px;background:#39393d;position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff}
+.sw.on{background:var(--green)}.sw.on::after{left:20px}
+.hint{font-size:12.5px;color:var(--muted);line-height:1.4;margin-top:-4px;padding-bottom:6px}
+.seg{display:flex;background:#2c2c2e;border-radius:9px;padding:2px;margin:8px 0 4px}.seg span{flex:1;text-align:center;padding:6px;font-size:13px;font-weight:600;border-radius:7px;color:#d1d1d6}.seg span.on{background:#636366;color:#fff}
+.sec{font-weight:700;font-size:17px;margin-bottom:6px;display:flex;justify-content:space-between}.meta{color:var(--muted);font-size:14px;font-weight:600}
+.task{display:flex;gap:12px;align-items:center;padding:11px 0;border-top:.5px solid var(--hair)}.task:first-of-type{border-top:0}
+.ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none}
+.ic.w{background:#1d3347;color:var(--blue)}.ic.a{background:#173a37;color:var(--teal)}
+.box{width:24px;height:24px;border-radius:50%;border:2px solid #636366;flex:none}
+.sub{color:var(--muted);font-size:13px}.late{color:#ff6b5e}
+.flag{display:flex;gap:10px;background:#16302d;border-radius:14px;padding:11px 12px;margin:8px 0;color:var(--teal)}
+.flag.hot{background:#3a2c14;color:var(--amber)}.flag b{color:#fff;display:block;font-size:14px}.flag span{color:#d1d1d6;font-size:13px;line-height:1.35}
+.prow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:.5px solid var(--hair)}.prow:first-child{border-top:0}
+.ph{width:48px;height:48px;border-radius:12px;background:#24382a;display:grid;place-items:center;color:var(--green)}
+.pb{flex:1}.pn{font-weight:600}.ps{font-size:13px;color:var(--muted);font-style:italic}
+.st{font-size:13px;color:var(--muted);font-weight:600;display:flex;gap:4px;align-items:center;margin-top:2px}.st svg{width:14px;height:14px}
+.st.auto{color:var(--teal)}
+.tr{display:flex;flex-direction:column;align-items:flex-end;gap:5px}.drops{display:flex;gap:1px;color:#48484a}.drops .on{color:var(--blue)}.drops .on svg{fill:currentColor}.drops svg{width:14px;height:14px}
+.zone{font-size:13px;color:var(--muted);font-weight:600;margin:12px 4px 6px;display:flex;justify-content:space-between}
+.zchip{color:var(--teal);display:flex;gap:4px;align-items:center}.zchip svg{width:13px;height:13px}
+</style></head><body><div class="wrap">
+
+<div class="col"><h1>1 · Dónde se activa</h1>
+<p class="note">En Editar planta, junto a Maceta/Suelo y la lluvia. Para no ir planta a planta, también se puede activar en una zona entera desde Ajustes → Zonas.</p>
+<div class="lbl">EDITAR · plumeria</div>
+<div class="card">
+ <div class="seg"><span class="on">Maceta</span><span>Suelo</span></div>
+ <div class="seg"><span class="on">Le llega la lluvia</span><span>A cubierto</span></div>
+ <div class="sw-row"><svg viewBox="0 0 24 24"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></svg><span class="t">Sensible a heladas</span><span class="sw on"></span></div>
+ <div class="sw-row"><svg viewBox="0 0 24 24" style="color:var(--teal)"><path d="M4 20h16M12 20v-6M8 10a4 4 0 0 1 8 0c0 2-4 4-4 4s-4-2-4-4z"/></svg><span class="t">Riego automático</span><span class="sw on"></span></div>
+ <div class="hint">La app no te pedirá regarla. Te avisará si la lluvia o el calor hacen que convenga cambiar el programa.</div>
+</div>
+<div class="lbl">AJUSTES · ZONAS</div>
+<div class="card">
+ <div class="sw-row"><span class="t">Norte <span class="sub">· 1 planta</span></span><span class="sw on"></span></div>
+ <div class="sw-row"><span class="t">Zona Este <span class="sub">· 1 planta</span></span><span class="sw"></span></div>
+ <div class="hint" style="margin-top:6px">Activar una zona lo activa en todas sus plantas (y en las nuevas que pongas ahí).</div>
+</div></div>
+
+<div class="col"><h1>2 · Hoy</h1>
+<p class="note">Las plantas con riego automático no salen en «Para hoy». En su lugar, solo aparecen avisos cuando el tiempo pide tocar el programador.</p>
+<div class="card">
+ <div class="sec">Para hoy <span class="meta">1</span></div>
+ <div class="task"><span class="box"></span><span class="ic w"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span><div><b>Regar jazmin</b><div class="sub late">Atrasado 1 día · Zona Este</div></div></div>
+ <div class="flag"><svg viewBox="0 0 24 24"><path d="M7 15a4 4 0 0 1 .5-8 5 5 0 0 1 9.5 1.5A3.5 3.5 0 0 1 17 15z"/><path d="M9 18l-1 2M13 18l-1 2"/></svg><div><b>Riego automático: puedes pausarlo</b><span>Han caído 17 mm y mañana sigue lloviendo. Plumeria no necesita el riego de hoy ni de mañana.</span></div></div>
+ <div class="flag hot"><svg viewBox="0 0 24 24"><path d="M12 3c2 3 5 5 5 9a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 1-8z"/></svg><div><b>Calor: revisa el goteo</b><span>34° el martes. Comprueba que el riego automático llega a plumeria o añade un riego más.</span></div></div>
+</div>
+<div class="card"><div class="sec">Hecho hoy <span class="meta">—</span></div><div class="sub">Las plantas con riego automático no generan tareas de riego, así que no aparecen aquí ni en «Próximos días».</div></div>
+</div>
+
+<div class="col"><h1>3 · Plantas</h1>
+<p class="note">En la lista, en vez de «Regar en N días» pone «Riego automático». Las gotas se mantienen: siguen indicando cuánta agua necesita, útil para ajustar el programador.</p>
+<div class="zone"><span>Norte · 1</span><span class="zchip"><svg viewBox="0 0 24 24"><path d="M4 20h16M12 20v-6M8 10a4 4 0 0 1 8 0c0 2-4 4-4 4s-4-2-4-4z"/></svg>Riego automático</span></div>
+<div class="card"><div class="prow"><span class="ph"><svg viewBox="0 0 24 24"><path d="M12 21v-9M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg></span><div class="pb"><div class="pn">plumeria</div><div class="ps">Plumeria</div><div class="st auto"><svg viewBox="0 0 24 24"><path d="M4 20h16M12 20v-6M8 10a4 4 0 0 1 8 0c0 2-4 4-4 4s-4-2-4-4z"/></svg>Riego automático</div></div><div class="tr"><span class="drops"><span class="on"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span><span class="on"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span></span></div></div></div>
+<div class="zone"><span>Zona Este · 1</span></div>
+<div class="card"><div class="prow"><span class="ph"><svg viewBox="0 0 24 24"><path d="M12 21v-9M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg></span><div class="pb"><div class="pn">jazmin</div><div class="ps">Jasminum officinale</div><div class="st late"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg>Regar · atrasado 1 día</div></div><div class="tr"><span class="drops"><span class="on"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span><span class="on"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span><span class="on"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span></span></div></div></div>
+<div class="card"><div class="sec" style="font-size:15px">Ficha · plumeria</div><div class="sub">«Ahora · otoño»: <b style="color:#fff">Riego automático</b> · la IA recomienda cada 5 días en otoño y cada 10 en invierno (para ajustar el programador al cambiar de estación).</div></div>
+</div>
+
+</div></body></html>

@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002l";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002m";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002l";
-import { buildICS } from "./calendar.js?v=20261002l";
+} from "./rules.js?v=20261002m";
+import { buildICS } from "./calendar.js?v=20261002m";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -301,11 +301,12 @@ function plantsView() {
   let html = "";
   for (const zone of zones) {
     const list = plants.filter((p) => (p.zone || "Sin zona") === zone).sort((a, b) => a.name.localeCompare(b.name, "es"));
-    html += `<div class="zone-title">${esc(zone)} · ${list.length}</div><section class="card list-card">` + list.map((p) => {
+    const autoZone = list.every((p) => p.autoWater);
+    html += `<div class="zone-title">${esc(zone)} · ${list.length}${autoZone ? `<span class="zone-auto">${ICONS.drip}Riego automático</span>` : ""}</div><section class="card list-card">` + list.map((p) => {
       // Next watering, coloured: late (red), today (blue), later (grey).
       const due = nextDue(p, log, "water", today, here().lat);
       const n = due ? daysBetween(today, due) : null;
-      const status = n === null ? "" : n < 0
+      const status = p.autoWater ? `<span class="p-status auto">${ICONS.drip}Riego automático</span>` : n === null ? "" : n < 0
         ? `<span class="p-status late">${ICONS.droplet}Regar · atrasado ${-n === 1 ? "1 día" : `${-n} días`}</span>`
         : n === 0 ? `<span class="p-status today">${ICONS.droplet}Regar hoy</span>`
           : `<span class="p-status">${ICONS.droplet}Regar ${n === 1 ? "mañana" : `en ${n} días`}</span>`;
@@ -313,6 +314,27 @@ function plantsView() {
     }).join("") + `</section>`;
   }
   return html;
+}
+
+// Automatic irrigation: per plant (plant.autoWater) and per zone (state.data.autoZones). Turning a
+// zone on/off sets every plant in it, and new plants added to that zone start with it on.
+const autoZones = () => state.data.autoZones ?? [];
+function zonesCard() {
+  const zones = [...new Set(state.data.plants.map((p) => p.zone).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+  if (!zones.length) return "";
+  return `<div class="group-title">Riego automático por zona</div>
+    <section class="card list-card settings">${zones.map((z) => {
+      const n = state.data.plants.filter((p) => p.zone === z).length;
+      const on = autoZones().includes(z);
+      return `<button type="button" class="l-row switch-row" role="switch" aria-checked="${on}" data-action="zone-auto" data-zone="${esc(z)}"><span class="l-ico" style="background:#1f8f86">${ICONS.drip}</span><span class="l-label">${esc(z)} <span class="muted">· ${n === 1 ? "1 planta" : `${n} plantas`}</span></span><span class="switch" aria-hidden="true"></span></button>`;
+    }).join("")}</section>
+    <p class="group-foot">Activar una zona lo activa en todas sus plantas y en las nuevas que pongas ahí; también se puede cambiar planta a planta en Editar. Esas plantas no te pedirán riego: te avisaremos si la lluvia o el calor piden tocar el programador.</p>`;
+}
+// The next season's interval, so the timer can be changed in time.
+function autoHint(p, season) {
+  const next = SEASONS[(SEASONS.indexOf(season) + 1) % 4];
+  const every = intervalFor(p, "water", next);
+  return every ? ` · en ${SEASON_LABEL[next].toLowerCase()}, cada ${every}` : "";
 }
 
 function moreView() {
@@ -329,6 +351,7 @@ function moreView() {
       ${row("open-ai", "sparkle", "#7a56d6", "Asistente IA", aiOn ? `<span class="ok">${ICONS.circleCheck}Activado</span>` : "Sin activar")}
       ${pending || upgrade ? row("open-upgrades", "refresh", "#c7771a", "Fichas por actualizar", pending ? `<span class="dot"></span>${pending}` : "Al día") : ""}
     </section>
+    ${zonesCard()}
     <div class="group-title">Avisos y calendario</div>
     <section class="card list-card settings">
       ${row("noop", "bell", "#c93b30", "Aviso diario", "Próximamente", false)}
@@ -614,6 +637,9 @@ function plantSheet(id) {
     const every = intervalFor(p, type, season);
     const due = nextDue(p, state.data.log, type, today, lat);
     const ico = `<span class="t-ico ${type}">${ICONS[TASK_ICON[type]]}</span>`;
+    if (type === "water" && p.autoWater && every) {
+      return `<div class="n-row">${ico}<div class="body"><b>Riego automático</b><span>Para el programador: cada ${every} días en ${SEASON_LABEL[season].toLowerCase()}${autoHint(p, season)}</span></div></div>`;
+    }
     if (due) {
       const n = daysBetween(today, due);
       const kind = type === "feed" && p.feedTypes?.[season] ? `<span class="feed-type">${esc(p.feedTypes[season])} <span class="ai-mark">✦</span></span>` : "";
@@ -645,6 +671,7 @@ function plantSheet(id) {
     p.inPot ? ["pot", "Maceta"] : ["ground", "Suelo"],
     p.rainReaches ? ["rain", "Le llega la lluvia"] : ["umbrella", "A cubierto"],
     p.frostSensitive ? ["snow", "Sensible a heladas"] : null,
+    p.autoWater ? ["drip", "Riego automático"] : null,
   ].filter(Boolean);
   const LOG_ICON = { water: "droplet", feed: "flask", prune: "scissors", treat: "bug", note: "notes", task: "check" };
   openSheet(`
@@ -697,6 +724,11 @@ function plantForm(id) {
       <label class="switch-row">
         <span>${ICONS.snow}Sensible a heladas</span>
         <input type="checkbox" role="switch" name="frostSensitive" class="switch-input" ${p.frostSensitive ? "checked" : ""} />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+      <label class="switch-row">
+        <span>${ICONS.drip}Riego automático</span>
+        <input type="checkbox" role="switch" name="autoWater" class="switch-input" ${p.autoWater ? "checked" : ""} />
         <span class="switch" aria-hidden="true"></span>
       </label>
       <section class="card care-block">
@@ -1037,6 +1069,7 @@ const ICONS = {
   "snow": svg('<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.5 12 6l2.5-1.5M9.5 19.5 12 18l2.5 1.5"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
   leaf: svg('<path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19l7-7"/>'),
+  drip: svg('<path d="M4 20h16M12 20v-5"/><path d="M12 15s-4-2.2-4-5a4 4 0 0 1 8 0c0 2.8-4 5-4 5z"/>'),
   sprout: svg('<path d="M12 20v-8"/><path d="M12 12c0-3 2-5 5.5-5 0 3-2 5-5.5 5zM12 14c0-2.5-1.8-4-4.5-4 0 2.5 1.8 4 4.5 4z"/>'),
   sparkle: svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16v4M17 18h4"/>'),
 };
@@ -1054,6 +1087,7 @@ function newPlantWizard() {
     ...PLACE_DEFAULTS, ...store.get("mj_last_place", {}),
     species: "", seasons: structuredClone(DEFAULT_SEASONS), frostSensitive: false, notes: "", newZone: false,
   };
+  wiz.autoWater = autoZones().includes(wiz.zone);
   renderWizard();
 }
 
@@ -1111,6 +1145,9 @@ function renderWizard() {
     ${segmented("rainReaches", "La lluvia", [[true, "rain", "Le llega"], [false, "umbrella", "A cubierto"]])}
     <button type="button" class="switch-row" role="switch" aria-checked="${wiz.frostSensitive && !busy}" data-action="wiz-set" data-key="frostSensitive" ${lock}>
       <span>${ICONS.snow}Sensible a heladas</span><span class="switch" aria-hidden="true"></span>
+    </button>
+    <button type="button" class="switch-row" role="switch" aria-checked="${wiz.autoWater}" data-action="wiz-set" data-key="autoWater">
+      <span>${ICONS.drip}Riego automático</span><span class="switch" aria-hidden="true"></span>
     </button>
     <section class="card care-block">
       <h3>Cuidados${wiz.ai === "done" ? ` propuestos <span class="ai-mark">✦</span>` : ""}</h3>
@@ -1171,7 +1208,7 @@ function wizSave() {
   const plant = {
     id: uid(), created: localToday(), name: wiz.name, species: wiz.species, zone,
     seasons: wiz.seasons, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
-    frostSensitive: wiz.frostSensitive, notes: wiz.notes, tips: wiz.tips, feedTypes: wiz.feedTypes, photo: draftPhoto,
+    frostSensitive: wiz.frostSensitive, autoWater: wiz.autoWater, notes: wiz.notes, tips: wiz.tips, feedTypes: wiz.feedTypes, photo: draftPhoto,
   };
   if (wiz.ai === "done" && wiz.care) plant.ai = aiSnapshot(wiz.care);
   // With the AI, the calendar (version 4) arrives in the background; by hand, nothing to fetch.
@@ -1215,10 +1252,10 @@ const actions = {
   "new-plant": newPlantWizard,
   "wiz-back": () => { wiz.step = 1; renderWizard(); },
   "wiz-alt": (d) => { wiz.query = altQuery(wiz.care.alternatives[+d.i]); wizLookup(); },
-  "wiz-zone": (d) => { wiz.zone = d.zone; wiz.newZone = false; renderWizard(); },
+  "wiz-zone": (d) => { wiz.zone = d.zone; wiz.newZone = false; if (!wiz.touched.autoWater) wiz.autoWater = autoZones().includes(d.zone); renderWizard(); },
   "wiz-new-zone": () => { wiz.newZone = true; wiz.zone = ""; renderWizard(); },
   "wiz-set": (d) => {
-    wiz[d.key] = d.key === "frostSensitive" ? !wiz.frostSensitive : d.value === "true";
+    wiz[d.key] = d.key === "frostSensitive" || d.key === "autoWater" ? !wiz[d.key] : d.value === "true";
     wiz.touched[d.key] = true;
     renderWizard();
   },
@@ -1260,6 +1297,13 @@ const actions = {
     save();
     render();
     if (d.reopen) plantSheet(p.id);
+  },
+  "zone-auto": (d) => {
+    const on = !autoZones().includes(d.zone);
+    state.data.autoZones = on ? [...autoZones(), d.zone] : autoZones().filter((z) => z !== d.zone);
+    for (const p of state.data.plants) if ((p.zone || "") === d.zone) p.autoWater = on;
+    save();
+    render();
   },
   "toggle-week-tasks": () => { weekAll = !weekAll; render(); },
   "toggle-done": () => { doneOpen = !doneOpen; render(); },
@@ -1384,6 +1428,7 @@ document.addEventListener("submit", (e) => {
     rainReaches: f.get("rainReaches") === "true",
     inPot: f.get("inPot") === "true",
     frostSensitive: f.has("frostSensitive"),
+    autoWater: f.has("autoWater"),
     notes: f.get("notes").trim(),
     photo: draftPhoto,
   };
