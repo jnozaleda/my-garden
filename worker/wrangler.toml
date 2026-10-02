@@ -16,7 +16,9 @@ id = "81322824fdd74edea7300bb086625d7c"
 
 [vars]
 ALLOWED_ORIGINS = "https://jnozaleda.github.io,http://localhost:8767"
-PROVIDER = "workers-ai"
+# Chain: first that answers wins (Gemini free tier, then Workers AI as backup).
+PROVIDER = "gemini,workers-ai"
+GEMINI_MODEL = "gemini-flash-latest"
 MODEL = "@cf/qwen/qwen3.8-27b"  # best of the free-plan models tested 2026-09-29 (Gemma 4, Llama 3.3 70B, Qwen)
 DAILY_LIMIT = "60"
 IP_DAILY_LIMIT = "20"

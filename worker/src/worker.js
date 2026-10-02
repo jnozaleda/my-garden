@@ -136,7 +136,42 @@ const providers = {
       throw new Error(`unparseable output: ${JSON.stringify(out).slice(0, 300)}`);
     }
   },
+  // Google Gemini (free tier from AI Studio; key in the GEMINI_API_KEY secret, model in GEMINI_MODEL).
+  async gemini(env, messages, schema = CARE_SCHEMA) {
+    if (!env.GEMINI_API_KEY) throw new Error("no GEMINI_API_KEY");
+    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY.trim() },
+      body: JSON.stringify({
+        ...(system && { systemInstruction: { parts: [{ text: system }] } }),
+        contents: messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+        generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema, temperature: 0.2, maxOutputTokens: 4000 },
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) throw new Error(`gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const out = await res.json();
+    const text = out?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
+    try { return JSON.parse(text); } catch {
+      throw new Error(`unparseable output: ${JSON.stringify(out).slice(0, 300)}`);
+    }
+  },
 };
+
+// PROVIDER is a comma-separated chain ("gemini,workers-ai"): the first that answers wins, so a
+// quota or outage at one falls through to the next.
+const chain = (env) => String(env.PROVIDER).split(",").map((p) => p.trim()).filter((p) => providers[p]);
+async function askAI(env, messages, schema, name) {
+  let last;
+  for (const p of chain(env)) {
+    try { return { from: p, out: await providers[p](env, messages, schema, name) }; } catch (err) {
+      console.error("provider failed", p, err?.message);
+      last = err;
+    }
+  }
+  throw last ?? new Error("no provider");
+}
 
 // Models overrun length hints: keep whole sentences up to `max` characters.
 function clipSentences(text, max) {
@@ -272,20 +307,20 @@ async function handleCare(request, env, headers, ctx) {
   const place = String(body.place ?? "").slice(0, 60);
 
   // Same plant, same climate cell (~100 km) → same answer, whatever the month.
-  const cacheKey = `care:v11:${env.PROVIDER}:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
+  const cacheKey = `care:v12:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) { recordAi(env, ctx, "cached"); return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers); }
 
   if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
 
-  const provider = providers[env.PROVIDER];
-  if (!provider) return json({ error: "provider" }, 500, headers);
+  if (!chain(env).length) return json({ error: "provider" }, 500, headers);
   let care;
   const t0 = Date.now();
   try {
-    care = sanitize(await provider(env, careMessages({ name, place, lat, lon })));
+    const { from, out } = await askAI(env, careMessages({ name, place, lat, lon }));
+    care = { ...sanitize(out), provider: from };
   } catch (err) {
-    console.error("care failed", env.PROVIDER, env.MODEL, err?.message);
+    console.error("care failed", env.PROVIDER, err?.message);
     recordAi(env, ctx, "error");
     return json({ error: "ai" }, 502, headers);
   }
@@ -352,20 +387,20 @@ async function handleCalendar(request, env, headers, ctx) {
   if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: "input" }, 400, headers);
   const place = String(body.place ?? "").slice(0, 60);
 
-  const cacheKey = `cal:v2:${env.PROVIDER}:${normName(species || name)}:${Math.round(lat)}:${Math.round(lon)}`;
+  const cacheKey = `cal:v3:${normName(species || name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) { recordAi(env, ctx, "cached"); return json({ ...cached, cached: true }, 200, headers); }
 
   if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
 
-  const provider = providers[env.PROVIDER];
-  if (!provider) return json({ error: "provider" }, 500, headers);
+  if (!chain(env).length) return json({ error: "provider" }, 500, headers);
   let cal;
   const t0 = Date.now();
   try {
-    cal = sanitizeCalendar(await provider(env, calendarMessages({ name, species, place, lat }), CALENDAR_SCHEMA, "calendario"));
+    const { from, out } = await askAI(env, calendarMessages({ name, species, place, lat }), CALENDAR_SCHEMA, "calendario");
+    cal = { ...sanitizeCalendar(out), provider: from };
   } catch (err) {
-    console.error("calendar failed", env.PROVIDER, env.MODEL, err?.message);
+    console.error("calendar failed", env.PROVIDER, err?.message);
     recordAi(env, ctx, "error");
     return json({ error: "ai" }, 502, headers);
   }
