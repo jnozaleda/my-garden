@@ -47,6 +47,7 @@ Cloudflare Worker en https://my-garden-api.tempcheck-app.workers.dev
 | Ruta | Qué hace |
 |---|---|
 | `GET /health` | Comprobación |
+| `POST /calendar` | `{ name, species, lat, lon, place }` → calendario de tareas del año (`tasks`: tipo, título, cómo, meses) y riesgos (`risks`: hongos, caracoles, quemaduras, viento). Se pide aparte y en segundo plano porque tarda más. Memoria propia (`cal:`). Cabecera `X-Access-Code` obligatoria |
 | `POST /care` | `{ name, lat, lon, place }` → ficha de cuidados para todo el año: especie, `seasons` (riego y abono por estación), `tips` (un consejo por estación), heladas, notas para todo el año, confianza y `alternatives` (otras plantas que se llaman igual, p. ej. «jazmín» → falso jazmín). Si el nombre no es una planta responde `422 { error: "not_plant" }`. Si llega `month` (versiones antiguas de la app), añade también `waterEvery`/`feedEvery` de esa estación. Cabecera `X-Access-Code` obligatoria |
 
 - **Proveedor de IA:** `PROVIDER` y `MODEL` en `wrangler.toml`. Hoy usa Workers AI (gratis) con `@cf/qwen/qwen3.8-27b`, elegido tras comparar con Gemma 4 y Llama 3.3 70B. Para pasar a Claude, se añade un proveedor en `src/worker.js` y se cambia `PROVIDER`.

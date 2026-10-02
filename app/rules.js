@@ -7,7 +7,77 @@ export const CARE = {
   prune: { label: "Podar", done: "Podado", icon: "✂️" },
   treat: { label: "Tratar", done: "Tratado", icon: "🐞" },
   note: { label: "Nota", done: "Nota", icon: "📝" },
+  task: { label: "Tarea", done: "Tarea hecha", icon: "☑️" },
 };
+
+// ---------- Year calendar (checklist) ----------
+// Each plant may carry `yearTasks` from the AI: [{ type, title, how, months: [1..12] }].
+const monthOf = (iso) => Number(iso.slice(5, 7));
+const lastDay = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+// The run of consecutive months (wrapping the year) that contains today's month, as ISO dates;
+// null if the task doesn't apply this month.
+export function taskWindow(months, today) {
+  const m = monthOf(today);
+  if (!months.includes(m)) return null;
+  const has = (k) => months.includes(((k - 1 + 12) % 12) + 1);
+  let back = 0, fwd = 0;
+  while (back < 11 && has(m - back - 1)) back++;
+  while (fwd < 11 - back && has(m + fwd + 1)) fwd++;
+  const y = Number(today.slice(0, 4));
+  const sm = m - back, em = m + fwd;
+  const sy = y + Math.floor((sm - 1) / 12), ey = y + Math.floor((em - 1) / 12);
+  const smm = ((sm - 1 + 12) % 12) + 1, emm = ((em - 1 + 12) % 12) + 1;
+  return { start: `${sy}-${pad(smm)}-01`, end: `${ey}-${pad(emm)}-${pad(lastDay(ey, emm))}`, lastMonth: fwd === 0, months: back + fwd + 1 };
+}
+
+// This month's year tasks for the given plants, with done = logged since the window opened.
+// Each: { plant, i, task, window, done, ref }
+export function monthTasks(plants, log, today) {
+  const out = [];
+  for (const plant of plants) {
+    (plant.yearTasks ?? []).forEach((task, i) => {
+      const window = taskWindow(task.months, today);
+      if (!window) return;
+      const ref = `${plant.id}:${i}`;
+      const done = log.some((e) => e.type === "task" && e.ref === ref && e.date >= window.start);
+      out.push({ plant, i, task, window, done, ref });
+    });
+  }
+  return out.sort((a, b) => a.done - b.done || b.window.lastMonth - a.window.lastMonth || a.plant.name.localeCompare(b.plant.name));
+}
+
+// Weather-driven checks for the week, beyond the alerts: rain spells (fungus, snails), cold
+// nights above frost, heat for sun-sensitive plants. Each: { kind, title, text, plantIds }
+export function weatherChecks(plants, weather, today) {
+  if (!weather) return [];
+  const { days, today: t } = weather;
+  const recent = days.slice(Math.max(0, t - 2), t + 1);
+  const week = days.slice(t, t + 7);
+  const out = [];
+  const names = (list) => list.map((p) => p.name).join(", ").replace(/, ([^,]*)$/, " y $1");
+  const wet = recent.reduce((sum, d) => sum + d.rain, 0) >= 15 || recent.filter((d) => d.rain >= 2).length >= 2;
+  if (wet) {
+    const fungus = plants.filter((p) => p.rainReaches && p.risks?.includes("fungus"));
+    const snails = plants.filter((p) => p.rainReaches && p.risks?.includes("snails"));
+    const hit = [...new Set([...fungus, ...snails])];
+    if (hit.length) {
+      const what = fungus.length && snails.length ? "hongos y caracoles" : fungus.length ? "hongos" : "caracoles y babosas";
+      out.push({ kind: "rain", title: "Tras los días de lluvia", text: `Revisa ${what} en ${names(hit)}.`, plantIds: hit.map((p) => p.id) });
+    }
+  }
+  const cold = week.find((d) => d.min <= 5 && d.min > LIMITS.frostC);
+  const tender = plants.filter((p) => p.frostSensitive);
+  if (cold && tender.length) {
+    out.push({ kind: "cold", title: `Noches frías ${whenLabel(today, cold.date)} (${Math.round(cold.min)}°)`, text: `Ten a mano protección para ${names(tender)}.`, plantIds: tender.map((p) => p.id) });
+  }
+  const hot = week.find((d) => d.max >= LIMITS.heatC);
+  const sunny = plants.filter((p) => p.risks?.includes("sunburn"));
+  if (hot && sunny.length) {
+    out.push({ kind: "heat", title: `Calor ${whenLabel(today, hot.date)} (${Math.round(hot.max)}°)`, text: `Da sombra en las horas centrales a ${names(sunny)}.`, plantIds: sunny.map((p) => p.id) });
+  }
+  return out;
+}
 
 // Thresholds (tunable once there's real use behind them).
 export const LIMITS = { rainSkipMm: 5, rainProb: 60, heatC: 32, heatwaveC: 35, frostC: 2, gustKmh: 50 };

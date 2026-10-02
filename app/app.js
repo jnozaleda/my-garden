@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002e";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002g";
 import {
-  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002e";
-import { buildICS } from "./calendar.js?v=20261002e";
+  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
+} from "./rules.js?v=20261002g";
+import { buildICS } from "./calendar.js?v=20261002g";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -118,10 +118,81 @@ function todayView() {
   html += tasks.length
     ? `<section class="card"><div class="sec">Para hoy <span class="meta">${tasks.length}</span></div>${rows}</section>`
     : `<section class="card">${empty}</section>`;
-  return html + doneTodayCard(today) + upcomingCard(today, upcoming);
+  return html + doneTodayCard(today) + gardenWeekCard(today) + upcomingCard(today, upcoming);
 }
 
 const TASK_ICON = { water: "droplet", feed: "flask" };
+const YEAR_TYPE = {
+  prune: ["scissors", "Poda"], repot: ["sprout", "Trasplante"], treat: ["bug", "Tratamiento"], mulch: ["shovel", "Acolchado"],
+  protect: ["snow", "Frío"], clean: ["leaf", "Limpieza"], harvest: ["leaf", "Cosecha"], other: ["check", "Otros"],
+};
+const MONTH_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const WX_ICON = { rain: "cloud-rain", cold: "snow", heat: "flame" };
+
+// When a year task is due: the last month of its window says «Hasta el 31 oct»; otherwise the range.
+function windowLabel(w) {
+  return w.lastMonth
+    ? `<span class="yt-when soon">${ICONS.clock}Hasta el ${fmtDate(w.end, { day: "numeric", month: "short" })}</span>`
+    : `<span class="yt-when">${ICONS.calendar}${MONTH_SHORT[Number(w.start.slice(5, 7)) - 1]} – ${MONTH_SHORT[Number(w.end.slice(5, 7)) - 1]}</span>`;
+}
+
+// «Esta semana en el jardín»: weather checks with plant names, then this month's tasks for all plants.
+let weekAll = false;
+function gardenWeekCard(today) {
+  const { plants, log } = state.data;
+  const checks = weatherChecks(plants, state.weather, today);
+  const items = monthTasks(plants, log, today);
+  if (!checks.length && !items.length) return "";
+  const done = items.filter((x) => x.done).length;
+  const shown = weekAll ? items : items.slice(0, 5);
+  return `<section class="card">
+    <div class="sec">Esta semana en el jardín ${items.length ? `<span class="meta">${done} de ${items.length}</span>` : ""}</div>
+    ${items.length ? `<div class="progress"><span style="width:${Math.round((done / items.length) * 100)}%"></span></div>` : ""}
+    ${checks.map((c) => `<div class="wx-flag">${ICONS[WX_ICON[c.kind]]}<div><b>${esc(c.title)}</b><span>${esc(c.text)}</span></div></div>`).join("")}
+    ${shown.map((x) => `<div class="yt-row ${x.done ? "done" : ""}">
+      <button type="button" class="yt-box" data-action="task-toggle" data-id="${x.plant.id}" data-i="${x.i}" aria-pressed="${x.done}" aria-label="${x.done ? "Desmarcar" : "Marcar como hecha"}: ${esc(x.task.title)}">${ICONS.check}</button>
+      <div class="body"><b>${esc(x.task.title)}</b><div class="yt-how">${esc(x.task.how)}</div>
+        <div class="yt-meta"><button type="button" class="yt-plant" data-action="open-plant" data-id="${x.plant.id}">${ICONS.sprout}${esc(x.plant.name)}</button>${x.done ? "" : windowLabel(x.window)}</div></div>
+    </div>`).join("")}
+    ${items.length > 5 ? `<button type="button" class="link-btn" data-action="toggle-week-tasks">${weekAll ? "Ver menos" : `Ver las ${items.length}`}</button>` : ""}
+  </section>`;
+}
+
+// Ficha: «Este mes» (this plant's tasks + weather checks that name it) and the 12-month calendar.
+function plantMonthCard(p, today) {
+  const items = monthTasks([p], state.data.log, today);
+  const checks = weatherChecks(state.data.plants, state.weather, today).filter((c) => c.plantIds.includes(p.id));
+  if (calendarPending.has(p.id)) {
+    return `<section class="card"><div class="sec">Este mes</div><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Preparando el calendario del año…</div></section>`;
+  }
+  if (!items.length && !checks.length) return "";
+  const month = fmtDate(today, { month: "long" });
+  return `<section class="card"><div class="sec">Este mes · ${month}${p.yearTasks?.length ? ` <span class="ai-mark">✦</span>` : ""}</div>
+    ${items.map((x) => `<div class="yt-row right ${x.done ? "done" : ""}">
+      <span class="yt-kind ${x.task.type}">${ICONS[YEAR_TYPE[x.task.type]?.[0] ?? "check"]}</span>
+      <div class="body"><b>${esc(x.task.title)}</b><div class="yt-how">${esc(x.task.how)}</div>${x.done ? "" : `<div class="yt-meta">${windowLabel(x.window)}</div>`}</div>
+      <button type="button" class="yt-box" data-action="task-toggle" data-id="${p.id}" data-i="${x.i}" data-reopen="1" aria-pressed="${x.done}" aria-label="${x.done ? "Desmarcar" : "Marcar como hecha"}: ${esc(x.task.title)}">${ICONS.check}</button>
+    </div>`).join("")}
+    ${checks.map((c) => `<div class="yt-row right"><span class="yt-kind weather">${ICONS[WX_ICON[c.kind]]}</span><div class="body"><b>${esc(c.title)}</b><div class="yt-how">${esc(c.text)}</div><div class="yt-meta"><span class="yt-when wx">${ICONS.cloud}Por el tiempo</span></div></div></div>`).join("")}
+  </section>`;
+}
+
+function yearCalendarCard(p, today) {
+  const rows = [];
+  // Feeding comes from the season table; the rest from the AI's year tasks, one row per type.
+  const feedMonths = p.seasons ? [...Array(12).keys()].map((i) => i + 1).filter((m) => intervalFor(p, "feed", seasonOf(`2026-${String(m).padStart(2, "0")}-15`, here().lat))) : [];
+  if (feedMonths.length) rows.push(["flask", "Abonado", "feed", feedMonths]);
+  const byType = {};
+  for (const t of p.yearTasks ?? []) (byType[t.type] ??= new Set()), t.months.forEach((m) => byType[t.type].add(m));
+  for (const [type, months] of Object.entries(byType)) rows.push([YEAR_TYPE[type]?.[0] ?? "check", YEAR_TYPE[type]?.[1] ?? "Otros", type, [...months]]);
+  if (rows.length < 2) return "";
+  const now = Number(today.slice(5, 7));
+  return `<section class="card"><div class="sec">Calendario del año${p.yearTasks?.length ? ` <span class="ai-mark">✦</span>` : ""}</div>
+    <div class="year"><span></span>${"EFMAMJJASOND".split("").map((m, i) => `<span class="ym ${i + 1 === now ? "now" : ""}">${m}</span>`).join("")}
+    ${rows.map(([icon, label, cls, months]) => `<span class="yr">${ICONS[icon]}${label}</span>` +
+      [...Array(12).keys()].map((i) => `<span class="yc ${months.includes(i + 1) ? `on ${cls}` : ""} ${i + 1 === now ? "now" : ""}"></span>`).join("")).join("")}
+    </div></section>`;
+}
 const ALERT_ICON = { "🥶": "snow", "🔥": "flame", "💨": "wind" };
 // "mañana", "el martes"
 const dayPhrase = (iso, today) => daysBetween(today, iso) === 1 ? "mañana" : `el ${fmtDate(iso, { weekday: "long" })}`;
@@ -133,7 +204,9 @@ function doneTodayCard(today) {
   if (!done.length) return "";
   const rows = done.map((e) => {
     const p = plantById(e.plantId);
-    const what = e.type === "water" && e.note === "Lluvia" ? `${esc(p?.name ?? "")} · saltado por lluvia` : `${CARE[e.type]?.label ?? e.type} ${esc(p?.name ?? "")}`;
+    const what = e.type === "water" && e.note === "Lluvia" ? `${esc(p?.name ?? "")} · saltado por lluvia`
+      : e.type === "task" ? `${esc(e.note)} · ${esc(p?.name ?? "")}`
+        : `${CARE[e.type]?.label ?? e.type} ${esc(p?.name ?? "")}`;
     return `<div class="done-row"><span class="tick">${ICONS.check}</span><s>${what}</s>${e.time ? `<span class="time">${e.time}</span>` : ""}<button type="button" class="undo" data-action="undo-log" data-log="${e.id}">Deshacer</button></div>`;
   }).join("");
   return `<section class="card done-card ${doneOpen ? "open" : ""}">
@@ -271,6 +344,12 @@ const UPGRADES = [
       }
     },
   },
+  {
+    version: 4,
+    label: "calendario de cuidados del año",
+    source: "calendar",
+    apply: (plant, cal) => { plant.yearTasks = cal.tasks ?? []; plant.risks = cal.risks ?? []; },
+  },
 ];
 const CARE_VERSION = UPGRADES.at(-1).version;
 const hasSeasonalCare = (p) => Boolean(p.seasons) && new Set(SEASONS.map((k) => `${p.seasons[k].water}/${p.seasons[k].feed}`)).size > 1;
@@ -321,13 +400,24 @@ async function upgradePlants() {
   render();
   for (const plant of pending) {
     try {
-      const care = await requestCare(plant.name);
-      for (const u of missingUpgrades(plant)) u.apply(plant, care);
-      if (!plant.species) plant.species = care.species;
-      if (!plant.notes) plant.notes = care.notes;
-      plant.careVersion = CARE_VERSION;
-      withCurrentIntervals(plant);
-      save();
+      const missing = missingUpgrades(plant);
+      const careUps = missing.filter((u) => u.source !== "calendar");
+      if (careUps.length) {
+        const care = await requestCare(plant.name);
+        for (const u of careUps) u.apply(plant, care);
+        if (!plant.species) plant.species = care.species;
+        if (!plant.notes) plant.notes = care.notes;
+        plant.careVersion = Math.max(...careUps.map((u) => u.version));
+        withCurrentIntervals(plant);
+        save();
+      }
+      const calUps = missing.filter((u) => u.source === "calendar");
+      if (calUps.length) {
+        const cal = await requestCalendar(plant.name, plant.species);
+        for (const u of calUps) u.apply(plant, cal);
+        plant.careVersion = CARE_VERSION;
+        save();
+      }
     } catch (err) {
       if (err.message === "code" || err.message === "limit") { upgrade.stopped = aiErrorText(err.message); break; }
       upgrade.failed += 1;
@@ -360,6 +450,7 @@ function render() {
 const sheet = $("sheet");
 function openSheet(html, view = "") {
   sheet.dataset.view = view;
+  delete sheet.dataset.plant; // plantSheet sets it again after opening
   sheet.innerHTML = `<div class="grabber" aria-hidden="true"></div><div class="sheet-in">${html}</div>`;
   if (!sheet.open) sheet.showModal();
 }
@@ -442,22 +533,25 @@ function plantSheet(id) {
     p.rainReaches ? ["rain", "Le llega la lluvia"] : ["umbrella", "A cubierto"],
     p.frostSensitive ? ["snow", "Sensible a heladas"] : null,
   ].filter(Boolean);
-  const LOG_ICON = { water: "droplet", feed: "flask", prune: "scissors", treat: "bug", note: "notes" };
+  const LOG_ICON = { water: "droplet", feed: "flask", prune: "scissors", treat: "bug", note: "notes", task: "check" };
   openSheet(`
     <div class="sheet-head"><h2>${esc(p.name)}</h2><div class="row"><button class="btn small secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
     ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : ""}
     ${p.species || p.zone ? `<p class="muted">${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}</p>` : ""}
     <div class="traits">${traits.map(([icon, label]) => `<span class="trait">${ICONS[icon]}${label}</span>`).join("")}</div>
     ${nexts.length ? `<section class="card next-care"><div class="sec">${p.seasons ? `Ahora · ${SEASON_LABEL[season].toLowerCase()}` : "Ahora"}</div>${nexts.join("")}${p.tips?.[season] ? `<div class="n-tip">${ICONS[SEASON_ICON[season]]}<span>${esc(p.tips[season])} <span class="ai-mark">✦</span></span></div>` : ""}${nextLine}</section>` : ""}
+    ${plantMonthCard(p, today)}
     <section class="card"><div class="sec">Registrar</div><div class="acts">
-      ${Object.entries(CARE).map(([type, c]) => `<button type="button" class="act" data-action="log" data-type="${type}" data-id="${p.id}" data-reopen="1">${ICONS[LOG_ICON[type]]}${c.done}</button>`).join("")}
+      ${Object.entries(CARE).filter(([type]) => type !== "task").map(([type, c]) => `<button type="button" class="act" data-action="log" data-type="${type}" data-id="${p.id}" data-reopen="1">${ICONS[LOG_ICON[type]]}${c.done}</button>`).join("")}
     </div></section>
     ${p.notes ? `<section class="card"><div class="sec start">Notas${aiMark(isAiValue(p, "notes"))}</div><p class="muted notes-text">${esc(p.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
+    ${yearCalendarCard(p, today)}
     <section class="card"><div class="sec">Historial</div>${log.length ? `<ul class="log">${log.map((e) => `
       <li><span class="log-ico ${e.type}">${ICONS[LOG_ICON[e.type]] ?? ""}</span><span class="log-what">${esc(CARE[e.type]?.done ?? e.type)}${e.note ? ` — ${esc(e.note)}` : ""}</span><span class="d">${fmtDate(e.date)}</span>
       <button class="x" data-action="del-log" data-log="${e.id}" data-id="${p.id}" aria-label="Borrar">${ICONS.x}</button></li>`).join("")}</ul>` : `<p class="muted">Sin registros todavía.</p>`}</section>
     ${provenance}
     `);
+  sheet.dataset.plant = id;
 }
 
 let draftPhoto = null;
@@ -678,6 +772,44 @@ async function requestCare(name) {
   return body;
 }
 
+// The year calendar comes from its own endpoint and is slower: asked in the background.
+async function requestCalendar(name, species) {
+  const code = store.get("mj_ai_code", "");
+  if (!code) throw new Error("code");
+  const loc = state.loc ?? DEFAULT_LOC;
+  let res;
+  try {
+    res = await fetch(`${API}/calendar`, {
+      method: "POST",
+      signal: AbortSignal.timeout(90000),
+      headers: { "Content-Type": "application/json", "X-Access-Code": code },
+      body: JSON.stringify({ name, species, lat: loc.lat, lon: loc.lon, place: loc.name }),
+    });
+  } catch (err) {
+    throw new Error(err?.name === "TimeoutError" ? "timeout" : "network");
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error in AI_ERRORS ? body.error : "ai");
+  return body;
+}
+
+// After a plant is saved with the AI, its calendar arrives a few seconds later. Until then the
+// plant shows «Preparando el calendario…»; on failure it stays in «Fichas por actualizar».
+const calendarPending = new Set();
+async function fetchCalendarFor(plantId) {
+  const p = plantById(plantId);
+  if (!p || calendarPending.has(plantId)) return;
+  calendarPending.add(plantId);
+  render(); if (sheet.open && sheet.dataset.plant === plantId) plantSheet(plantId);
+  try {
+    const cal = await requestCalendar(p.name, p.species);
+    const plant = plantById(plantId);
+    if (plant) { plant.yearTasks = cal.tasks ?? []; plant.risks = cal.risks ?? []; plant.careVersion = CARE_VERSION; save(); }
+  } catch { /* stays pending in «Fichas por actualizar» */ }
+  calendarPending.delete(plantId);
+  render(); if (sheet.open && sheet.dataset.plant === plantId) plantSheet(plantId);
+}
+
 const aiErrorText = (key) => AI_ERRORS[key] ?? {
   timeout: "El asistente está tardando demasiado. Vuelve a intentarlo en un rato o rellénalo a mano.",
   network: "Sin conexión con el asistente. Rellénalo a mano.",
@@ -761,6 +893,8 @@ const ICONS = {
   fog: svg('<path d="M5 5h3m4 0h9M3 10h11m4 0h1M5 15h5m4 0h7M3 20h9m4 0h3"/>'),
   wind: svg('<path d="M5 8h8.5a2.5 2.5 0 1 0-2.3-3.2M3 12h15.5a2.5 2.5 0 1 1-2.3 3.2M4 16h5.5a2.5 2.5 0 1 1-2.3 3.2"/>'),
   flame: svg('<path d="M12 11c2.3-3.3.2-7.8-1-9 0 3.4-2.2 5.3-3.7 6.7C5.9 10.1 5 12.3 5 14.3 5 18 8.1 21 12 21s7-3 7-6.7c0-1.7-1.2-4.4-2.3-5.6-2.1 3.4-3.3 3.4-4.7 2.3z"/>'),
+  shovel: svg('<path d="M17 4l3 3M18.5 5.5L11 13M8.5 10.5l5 5-2.5 2.5a3.5 3.5 0 0 1-5 0l0 0a3.5 3.5 0 0 1 0-5z"/>'),
+  clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'),
   chevron: svg('<path d="M9 6l6 6-6 6"/>'),
   x: svg('<path d="M18 6L6 18M6 6l12 12"/>'),
   scissors: svg('<circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.6 8.6L19 19M8.6 15.4L19 5"/>'),
@@ -896,6 +1030,7 @@ async function wizLookup() {
     if (!current.touched.frostSensitive) current.frostSensitive = care.frostSensitive;
     current.notes = care.notes;
     current.tips = care.tips;
+
   } catch (err) {
     current.ai = err.message === "not_plant" ? "notplant" : "error";
     current.aiError = aiErrorText(err.message);
@@ -914,14 +1049,17 @@ function wizSave() {
     frostSensitive: wiz.frostSensitive, notes: wiz.notes, tips: wiz.tips, photo: draftPhoto,
   };
   if (wiz.ai === "done" && wiz.care) plant.ai = aiSnapshot(wiz.care);
-  plant.careVersion = CARE_VERSION;
+  // With the AI, the calendar (version 4) arrives in the background; by hand, nothing to fetch.
+  plant.careVersion = wiz.ai === "done" ? 3 : CARE_VERSION;
   withCurrentIntervals(plant);
   store.set("mj_last_place", { zone, inPot: wiz.inPot, rainReaches: wiz.rainReaches });
   state.data.plants.push(plant);
   save();
   render();
+  const askCalendar = wiz.ai === "done";
   wiz = null;
   plantSheet(plant.id);
+  if (askCalendar) fetchCalendarFor(plant.id);
 }
 
 // Saving the access code checks it against the backend so the user sees at once whether it works.
@@ -981,6 +1119,20 @@ const actions = {
   },
   "skip-rain": (d) => { addLog(d.id, "water", "Lluvia"); render(); },
   "undo-log": (d) => { state.data.log = state.data.log.filter((e) => e.id !== d.log); save(); render(); },
+  "task-toggle": (d) => {
+    const p = plantById(d.id);
+    const task = p?.yearTasks?.[+d.i];
+    if (!task) return;
+    const ref = `${p.id}:${d.i}`;
+    const w = taskWindow(task.months, localToday());
+    const doneLogs = state.data.log.filter((e) => e.type === "task" && e.ref === ref && w && e.date >= w.start);
+    if (doneLogs.length) state.data.log = state.data.log.filter((e) => !doneLogs.includes(e));
+    else state.data.log.push({ id: uid(), plantId: p.id, type: "task", ref, date: localToday(), time: new Date().toTimeString().slice(0, 5), note: task.title });
+    save();
+    render();
+    if (d.reopen) plantSheet(p.id);
+  },
+  "toggle-week-tasks": () => { weekAll = !weekAll; render(); },
   "toggle-done": () => { doneOpen = !doneOpen; render(); },
   "toggle-week": () => { weekOpen = !weekOpen; render(); },
   "del-log": (d) => {
@@ -1107,14 +1259,16 @@ document.addEventListener("submit", (e) => {
     photo: draftPhoto,
   };
   withCurrentIntervals(fields);
-  if (e.target.dataset.aiFilled) fields.careVersion = CARE_VERSION;
+  if (e.target.dataset.aiFilled) fields.careVersion = Math.max(3, Math.min(careVersionOf(plantById(id) ?? {}), CARE_VERSION));
   if (e.target.dataset.aiSnapshot) fields.ai = JSON.parse(e.target.dataset.aiSnapshot);
   if (e.target.dataset.tips && e.target.dataset.tips !== "null") fields.tips = JSON.parse(e.target.dataset.tips);
   if (id) Object.assign(plantById(id), fields);
   else state.data.plants.push({ id: uid(), created: localToday(), ...fields });
   save();
   render();
-  plantSheet(id || state.data.plants.at(-1).id);
+  const savedId = id || state.data.plants.at(-1).id;
+  plantSheet(savedId);
+  if (e.target.dataset.aiFilled) fetchCalendarFor(savedId);
 });
 
 // ---------- Start ----------

@@ -487,3 +487,38 @@ dialog#sheet { touch-action: pan-y; }
 .tip .icon { width: 16px; height: 16px; flex: none; margin-top: 1px; }
 .tip b { display: block; color: var(--text); font-weight: 600; font-size: 13px; }
 .tip.now b, .tip.now .icon { color: var(--accent); }
+
+/* Checklist: «Esta semana en el jardín», «Este mes», «Calendario del año» */
+.progress { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; margin: -2px 0 12px; }
+.progress span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.2s; }
+.wx-flag { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 14px; background: var(--info-soft); margin-bottom: 10px; }
+.wx-flag .icon { width: 20px; height: 20px; color: var(--info); flex: none; margin-top: 1px; }
+.wx-flag b { font-size: 14px; display: block; } .wx-flag span { font-size: 13px; color: var(--text-2); }
+.yt-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 0.5px solid var(--hairline); }
+.wx-flag + .yt-row, .progress + .yt-row, .sec + .yt-row { border-top: 0; padding-top: 2px; }
+.yt-row .body { flex: 1; min-width: 0; }
+.yt-row b { font-weight: 600; font-size: 15px; display: block; }
+.yt-row.done b { text-decoration: line-through; color: var(--text-2); }
+.yt-how { font-size: 13px; color: var(--text-2); line-height: 1.4; margin-top: 2px; }
+.yt-row.done .yt-how { display: none; }
+.yt-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 5px; }
+.yt-plant { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--accent); }
+.yt-plant .icon { width: 13px; height: 13px; }
+.yt-when { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.yt-when .icon { width: 13px; height: 13px; }
+.yt-when.soon { color: var(--warn); } .yt-when.wx { color: var(--info); }
+.yt-box { width: 24px; height: 24px; border-radius: 7px; border: 1.5px solid var(--text-3); flex: none; display: grid; place-items: center; color: transparent; margin-top: 1px; transition: all 0.15s; }
+.yt-box .icon { width: 15px; height: 15px; stroke-width: 2.6; }
+.yt-row.done .yt-box { background: var(--accent); border-color: var(--accent); color: #fff; }
+.yt-kind { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; flex: none; background: var(--accent-soft); color: var(--accent); }
+.yt-kind .icon { width: 18px; height: 18px; }
+.yt-kind.treat { background: var(--danger-soft); color: var(--danger); } .yt-kind.protect, .yt-kind.weather { background: var(--info-soft); color: var(--info); }
+.yt-kind.mulch { background: var(--warn-soft); color: var(--warn); }
+.year { display: grid; grid-template-columns: 84px repeat(12, 1fr); gap: 4px 2px; align-items: center; font-size: 11px; }
+.ym { text-align: center; color: var(--text-3); font-weight: 600; } .ym.now { color: var(--accent); }
+.yr { font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.yr .icon { width: 14px; height: 14px; flex: none; }
+.yc { height: 10px; border-radius: 3px; background: var(--track); }
+.yc.on { background: var(--accent); } .yc.on.feed { background: #e0a14a; } .yc.on.treat { background: var(--danger); }
+.yc.on.protect { background: var(--info); } .yc.on.mulch { background: var(--warn); }
+.yc.now { outline: 1.5px solid var(--text); outline-offset: 1px; }
