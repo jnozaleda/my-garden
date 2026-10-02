@@ -39,13 +39,14 @@ export async function searchCities(query) {
   }));
 }
 
-// WMO weather code → emoji, enough for a one-line forecast strip.
-export function weatherIcon(code) {
-  if (code === 0) return "☀️";
-  if (code <= 2) return "🌤️";
-  if (code === 3) return "☁️";
-  if (code <= 48) return "🌫️";
-  if (code <= 67 || (code >= 80 && code <= 82)) return "🌧️";
-  if (code <= 77 || code === 85 || code === 86) return "❄️";
-  return "⛈️";
+// WMO weather code → { kind, label }. `kind` names the app's icon (sun, cloud-sun, cloud, fog,
+// cloud-rain, snow, cloud-storm); `label` is the short Spanish description.
+export function weatherKind(code) {
+  if (code === 0) return { kind: "sun", label: "Despejado" };
+  if (code <= 2) return { kind: "cloud-sun", label: "Poco nuboso" };
+  if (code === 3) return { kind: "cloud", label: "Nublado" };
+  if (code <= 48) return { kind: "fog", label: "Niebla" };
+  if (code <= 67 || (code >= 80 && code <= 82)) return { kind: "cloud-rain", label: "Lluvia" };
+  if (code <= 77 || code === 85 || code === 86) return { kind: "snow", label: "Nieve" };
+  return { kind: "cloud-storm", label: "Tormentas" };
 }

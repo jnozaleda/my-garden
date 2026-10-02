@@ -46,6 +46,7 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
+  font-variant-numeric: tabular-nums;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -346,3 +347,67 @@ label.switch-row { cursor: pointer; }
 .day-wx { width: 100%; font-size: 12px; color: var(--info); }
 .day-wx.hot { color: var(--warn); }
 .link-btn { margin-top: 8px; color: var(--accent); font-weight: 600; font-size: 14px; }
+
+/* ---------- Clean Hoy (2026-10-02) ---------- */
+.top-row { align-items: flex-end; }
+h1#title { font-size: 32px; font-weight: 700; letter-spacing: -0.8px; }
+.subtitle { font-size: 14px; color: var(--text-2); margin-top: 2px; }
+.place { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; background: var(--card); border: 0.5px solid var(--hairline); border-radius: 999px; padding: 6px 10px; margin-bottom: 2px; }
+.place::after { content: none; }
+.place .icon { width: 15px; height: 15px; }
+.sec { font-size: 15px; font-weight: 600; margin: 0 0 12px; display: flex; justify-content: space-between; align-items: baseline; }
+.meta { font-size: 13px; font-weight: 500; color: var(--text-2); }
+
+/* Weather card */
+.wx-now { display: flex; align-items: center; gap: 14px; }
+.wx-ico .icon { width: 40px; height: 40px; stroke-width: 1.6; }
+.wx-ico { color: var(--text-2); } .wx-ico.sun, .wx-ico.cloud-sun { color: var(--warn); } .wx-ico.cloud-rain, .wx-ico.cloud-storm { color: var(--info); }
+.wx-temp { font-size: 46px; font-weight: 600; letter-spacing: -1.5px; line-height: 1; }
+.wx-desc { font-size: 15px; font-weight: 600; } .wx-desc small { display: block; font-weight: 400; font-size: 13px; color: var(--text-2); margin-top: 2px; }
+.wx-days { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 16px; padding-top: 14px; border-top: 0.5px solid var(--hairline); }
+.wx-day { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); }
+.wx-day .icon { width: 20px; height: 20px; color: var(--text-2); }
+.wx-day b { font-weight: 600; color: var(--text); font-size: 13px; }
+.wx-bar { width: 6px; height: 26px; border-radius: 3px; background: var(--hairline); position: relative; overflow: hidden; }
+.wx-bar span { position: absolute; bottom: 0; left: 0; right: 0; background: var(--info); border-radius: 3px; }
+.wx-mm { font-size: 11px; color: var(--info); min-height: 13px; }
+.wx-calm { display: flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 13px; color: var(--text-2); }
+.wx-calm .icon { width: 16px; height: 16px; color: var(--accent); }
+.wx-alert { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 13px; color: var(--text-2); }
+.wx-alert .icon { width: 20px; height: 20px; flex: none; }
+.wx-alert.danger .icon { color: var(--danger); } .wx-alert.warn .icon { color: var(--warn); }
+.wx-alert strong { display: block; color: var(--text); font-size: 14px; }
+
+/* Tasks */
+.t-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 0.5px solid var(--hairline); }
+.t-row:first-of-type { border-top: 0; padding-top: 0; }
+.t-row .body { flex: 1; min-width: 0; }
+.t-ico { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+.t-ico .icon { width: 19px; height: 19px; }
+.t-ico.water { background: var(--info-soft); color: var(--info); } .t-ico.feed { background: var(--warn-soft); color: var(--warn); }
+.t-title { font-weight: 600; font-size: 15px; }
+.t-when { font-size: 13px; color: var(--text-2); } .t-when.late { color: var(--danger); }
+.t-advice { font-size: 12px; margin-top: 3px; color: var(--info); } .t-advice.urgent { color: var(--warn); }
+.link-inline { color: var(--accent); font-weight: 600; font-size: 12px; }
+.t-check { width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--text-3); flex: none; display: grid; place-items: center; color: transparent; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+.t-check .icon { width: 16px; height: 16px; stroke-width: 2.4; }
+.t-check:active, .t-check:hover { border-color: var(--accent); color: var(--accent); }
+.t-empty { display: flex; align-items: center; gap: 12px; }
+.t-empty .badge { width: 36px; height: 36px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
+.t-empty b { font-weight: 600; font-size: 15px; display: block; } .t-empty span { font-size: 13px; color: var(--text-2); }
+
+/* Hecho hoy */
+.done-card { padding: 12px 16px; }
+.done-card .fold span:first-child { font-size: 15px; }
+.done-row .tick { color: var(--accent); display: grid; } .done-row .tick .icon { width: 16px; height: 16px; stroke-width: 2.4; }
+
+/* Próximos días */
+.day-row { grid-template-columns: 74px 1fr; }
+.day-name small { color: var(--text-2); }
+.day-gap { font-size: 13px; color: var(--text-3); padding: 0 0 10px; }
+.day-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 8px; padding: 4px 8px; background: var(--bg); }
+.day-chip .icon { width: 14px; height: 14px; }
+.day-chip.water { background: var(--bg); } .day-chip.water .icon { color: var(--info); }
+.day-chip.feed { background: var(--bg); } .day-chip.feed .icon { color: var(--warn); }
+.day-wx { display: flex; align-items: center; gap: 4px; }
+.day-wx .icon { width: 14px; height: 14px; flex: none; }

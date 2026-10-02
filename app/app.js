@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261002a";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002b";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002a";
-import { buildICS } from "./calendar.js?v=20261002a";
+} from "./rules.js?v=20261002b";
+import { buildICS } from "./calendar.js?v=20261002b";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -56,19 +56,30 @@ async function loadWeather() {
   render();
 }
 
-function forecastCard() {
-  if (state.weatherError) return `<section class="card"><h2>El tiempo</h2><p class="muted">No se ha podido cargar la previsión.</p><div class="row" style="margin-top:10px"><button class="btn small secondary" data-action="retry-weather">Reintentar</button></div></section>`;
-  if (!state.weather) return `<section class="card"><h2>El tiempo</h2><p class="muted">Cargando previsión…</p></section>`;
+// The weather card: today large, the next six days with a rain bar each, and the alerts (or a
+// single calm line) underneath.
+function forecastCard(alerts = []) {
+  if (state.weatherError) return `<section class="card"><p class="muted">No se ha podido cargar la previsión.</p><div class="row" style="margin-top:10px"><button class="btn small secondary" data-action="retry-weather">Reintentar</button></div></section>`;
+  if (!state.weather) return `<section class="card"><p class="muted">Cargando el tiempo…</p></section>`;
   const { days, today } = state.weather;
-  const cells = days.slice(today, today + 7).map((d, i) => `
-    <div class="${i === 0 ? "today" : ""}">
-      <span>${i === 0 ? "Hoy" : fmtDate(d.date, { weekday: "short" }).replace(".", "")}</span>
-      <span class="ico">${weatherIcon(d.code)}</span>
-      <span class="hi">${Math.round(d.max)}°</span>
-      <span>${Math.round(d.min)}°</span>
-      <span class="rain">${d.rain >= 1 ? `${Math.round(d.rain)}mm` : ""}</span>
-    </div>`).join("");
-  return `<section class="card"><h2>El tiempo · 7 días</h2><div class="forecast">${cells}</div></section>`;
+  const t = days[today];
+  const k = weatherKind(t.code);
+  const rainLine = t.rain >= 1 ? `${Math.round(t.rain)} mm de lluvia` : "sin lluvia";
+  const next = days.slice(today + 1, today + 7).map((d) => {
+    const w = weatherKind(d.code);
+    const pct = Math.min(100, Math.round((d.rain / 20) * 100));
+    return `<div class="wx-day"><span>${fmtDate(d.date, { weekday: "short" }).replace(".", "")}</span>${ICONS[w.kind]}<b>${Math.round(d.max)}°</b>
+      <span class="wx-bar" aria-hidden="true"><span style="height:${pct}%"></span></span><span class="wx-mm">${d.rain >= 1 ? Math.round(d.rain) : ""}</span></div>`;
+  }).join("");
+  const alertRows = alerts.length
+    ? alerts.map((a) => `<div class="wx-alert ${a.level}">${ICONS[a.kind] ?? ICONS.alert}<div><strong>${esc(a.title)}</strong><span>${esc(a.text)}</span></div></div>`).join("")
+    : `<div class="wx-calm">${ICONS.circleCheck}Sin heladas, calor extremo ni viento fuerte</div>`;
+  return `<section class="card wx">
+    <div class="wx-now"><span class="wx-ico ${k.kind}">${ICONS[k.kind]}</span><span class="wx-temp">${Math.round(t.max)}°</span>
+      <div class="wx-desc">${k.label}<small>Mín. ${Math.round(t.min)}° · ${rainLine}</small></div></div>
+    <div class="wx-days">${next}</div>
+    ${alertRows}
+  </section>`;
 }
 
 // ---------- Views ----------
@@ -83,32 +94,37 @@ function emptyGarden() {
 function todayView() {
   const today = localToday();
   const { plants, log } = state.data;
-  let html = upgradeBanner() + forecastCard();
-  if (state.weather) {
-    const alerts = weatherAlerts(plants, state.weather, today);
-    html += alerts.length
-      ? alerts.map((a) => `<div class="alert ${a.level}"><span class="ico">${a.icon}</span><div><strong>${esc(a.title)}</strong><span class="muted">${esc(a.text)}</span></div></div>`).join("")
-      : `<div class="alert ok"><span class="ico">✅</span><div><strong>Sin avisos del tiempo</strong><span class="muted">Ni heladas, ni calor extremo, ni viento fuerte en los próximos días.</span></div></div>`;
-  }
+  const alerts = state.weather ? weatherAlerts(plants, state.weather, today).map((a) => ({ ...a, kind: ALERT_ICON[a.icon] })) : [];
+  let html = upgradeBanner() + forecastCard(alerts);
   if (!plants.length) return html + emptyGarden();
 
   // Para hoy: overdue and due today (tomorrow onwards lives in «Próximos días»).
   const tasks = dueTasks(plants, log, state.weather, today, here().lat, 0);
   const rows = tasks.map((t) => `
-    <div class="task">
-      ${thumb(t.plant)}
+    <div class="t-row">
+      <span class="t-ico ${t.type}">${ICONS[TASK_ICON[t.type]]}</span>
       <div class="body">
-        <div class="title">${CARE[t.type].icon} ${CARE[t.type].label} ${esc(t.plant.name)}</div>
-        <div class="when ${t.days < 0 ? "late" : ""}">${relDue(t.days)}${t.plant.zone ? ` · ${esc(t.plant.zone)}` : ""}</div>
-        ${t.advice ? `<div class="advice ${t.advice.kind}">${esc(t.advice.text)}</div>` : ""}
+        <div class="t-title">${CARE[t.type].label} ${esc(t.plant.name)}</div>
+        <div class="t-when ${t.days < 0 ? "late" : ""}">${[t.days < 0 ? relDue(t.days) : "", t.plant.zone].filter(Boolean).map(esc).join(" · ") || "Hoy"}</div>
+        ${t.advice ? `<div class="t-advice ${t.advice.kind}">${esc(t.advice.text)}${t.advice.kind === "skip" ? ` · <button type="button" class="link-inline" data-action="skip-rain" data-id="${t.plant.id}">Saltar</button>` : ""}</div>` : ""}
       </div>
-      ${t.advice?.kind === "skip"
-        ? `<button class="btn small secondary" data-action="skip-rain" data-id="${t.plant.id}">Saltar</button>`
-        : `<button class="btn small" data-action="log" data-type="${t.type}" data-id="${t.plant.id}">Hecho</button>`}
+      <button type="button" class="t-check" data-action="log" data-type="${t.type}" data-id="${t.plant.id}" aria-label="Marcar como hecho: ${CARE[t.type].label} ${esc(t.plant.name)}">${ICONS.check}</button>
     </div>`).join("");
-  html += `<section class="card"><h2>Para hoy${tasks.length ? `<span class="count">${tasks.length}</span>` : ""}</h2>${rows || `<p class="muted all-done">🌿 Todo hecho por hoy</p>`}</section>`;
-  return html + doneTodayCard(today) + upcomingCard(today);
+  const upcoming = upcomingTasks(plants, log, today, here().lat, 7);
+  const firstNext = upcoming.find((d) => d.items.length);
+  const empty = `<div class="t-empty"><span class="badge">${ICONS.check}</span><div><b>Nada pendiente hoy</b><span>${firstNext
+    ? `Próxima tarea ${dayPhrase(firstNext.date, today)}: ${CARE[firstNext.items[0].type].label.toLowerCase()} ${esc(firstNext.items[0].plant.name)}`
+    : "Sin tareas en los próximos 7 días"}</span></div></div>`;
+  html += tasks.length
+    ? `<section class="card"><div class="sec">Para hoy <span class="meta">${tasks.length}</span></div>${rows}</section>`
+    : `<section class="card">${empty}</section>`;
+  return html + doneTodayCard(today) + upcomingCard(today, upcoming);
 }
+
+const TASK_ICON = { water: "droplet", feed: "flask" };
+const ALERT_ICON = { "🥶": "snow", "🔥": "flame", "💨": "wind" };
+// "mañana", "el martes"
+const dayPhrase = (iso, today) => daysBetween(today, iso) === 1 ? "mañana" : `el ${fmtDate(iso, { weekday: "long" })}`;
 
 // «Hecho hoy»: what was logged today, folded into one line; each entry can be undone.
 let doneOpen = false;
@@ -117,34 +133,37 @@ function doneTodayCard(today) {
   if (!done.length) return "";
   const rows = done.map((e) => {
     const p = plantById(e.plantId);
-    const what = e.type === "water" && e.note === "Lluvia" ? `${CARE.water.icon} ${esc(p?.name ?? "")} · saltado por lluvia` : `${CARE[e.type]?.icon ?? ""} ${CARE[e.type]?.label ?? e.type} ${esc(p?.name ?? "")}`;
-    return `<div class="done-row"><span class="tick">✓</span><s>${what}</s>${e.time ? `<span class="time">${e.time}</span>` : ""}<button type="button" class="undo" data-action="undo-log" data-log="${e.id}">Deshacer</button></div>`;
+    const what = e.type === "water" && e.note === "Lluvia" ? `${esc(p?.name ?? "")} · saltado por lluvia` : `${CARE[e.type]?.label ?? e.type} ${esc(p?.name ?? "")}`;
+    return `<div class="done-row"><span class="tick">${ICONS.check}</span><s>${what}</s>${e.time ? `<span class="time">${e.time}</span>` : ""}<button type="button" class="undo" data-action="undo-log" data-log="${e.id}">Deshacer</button></div>`;
   }).join("");
   return `<section class="card done-card ${doneOpen ? "open" : ""}">
-    <button type="button" class="fold" data-action="toggle-done" aria-expanded="${doneOpen}"><span>✅ Hecho hoy <span class="muted">· ${done.length}</span></span><span class="chev">›</span></button>
+    <button type="button" class="fold" data-action="toggle-done" aria-expanded="${doneOpen}"><span>Hecho hoy</span><span class="meta">${done.length} <span class="chev">›</span></span></button>
     ${doneOpen ? `<div class="done-list">${rows}</div>` : ""}</section>`;
 }
 
 // «Próximos días»: the next 7 days, 3 at first; rain or heat in the forecast is noted on its day.
 let weekOpen = false;
-function upcomingCard(today) {
-  const days = upcomingTasks(state.data.plants, state.data.log, today, here().lat, 7);
+function upcomingCard(today, days) {
   const forecast = Object.fromEntries((state.weather?.days ?? []).map((d) => [d.date, d]));
-  const label = (iso, i) => i === 0 ? "Mañana" : fmtDate(iso, { weekday: "long" }).replace(/^./, (c) => c.toUpperCase());
-  const rows = days.slice(0, weekOpen ? 7 : 3).map(({ date, items }, i) => {
+  const busy = days.filter((d) => d.items.length);
+  const label = (iso) => daysBetween(today, iso) === 1 ? "Mañana" : fmtDate(iso, { weekday: "long" }).replace(/^./, (c) => c.toUpperCase());
+  const shown = weekOpen ? busy : busy.slice(0, 3);
+  const rows = shown.map(({ date, items }) => {
     const f = forecast[date];
     // Only the plants the rain reaches can skip their watering.
-    const rainy = items.filter((x) => x.type === "water" && x.plant.rainReaches).map((x) => x.plant.name);
+    const watering = items.filter((x) => x.type === "water");
+    const rainy = watering.filter((x) => x.plant.rainReaches).map((x) => x.plant.name);
     const note = f && rainy.length && f.rain >= 5 && f.rainProb >= 60
-      ? `<span class="day-wx">🌧️ ${Math.round(f.rain)} mm previstos: ${rainy.length === items.filter((x) => x.type === "water").length ? "probablemente no haga falta regar" : `${esc(rainy.join(", "))} quizá no necesite${rainy.length > 1 ? "n" : ""} riego`}</span>`
-      : f && items.some((x) => x.type === "water") && f.max >= 32
-        ? `<span class="day-wx hot">🔥 ${Math.round(f.max)}°: riega temprano</span>` : "";
-    return `<div class="day-row"><div class="day-name">${label(date, i)}<small>${fmtDate(date)}</small></div><div class="day-items">
-      ${items.length ? items.map((x) => `<button type="button" class="day-chip ${x.type}" data-action="open-plant" data-id="${x.plant.id}">${CARE[x.type].icon} ${esc(x.plant.name)}</button>`).join("") : `<span class="muted small">Nada</span>`}
+      ? `<span class="day-wx">${ICONS["cloud-rain"]}${Math.round(f.rain)} mm previstos: ${rainy.length === watering.length ? "probablemente no haga falta regar" : `${esc(rainy.join(", "))} quizá no necesite${rainy.length > 1 ? "n" : ""} riego`}</span>`
+      : f && watering.length && f.max >= 32 ? `<span class="day-wx hot">${ICONS.flame}${Math.round(f.max)}°: riega temprano</span>` : "";
+    return `<div class="day-row"><div class="day-name">${label(date)}<small>${fmtDate(date)}</small></div><div class="day-items">
+      ${items.map((x) => `<button type="button" class="day-chip ${x.type}" data-action="open-plant" data-id="${x.plant.id}">${ICONS[TASK_ICON[x.type]]}${esc(x.plant.name)}</button>`).join("")}
       ${note}</div></div>`;
   }).join("");
-  return `<section class="card"><h2>Próximos días</h2>${rows}
-    <button type="button" class="link-btn" data-action="toggle-week">${weekOpen ? "Ver menos" : "Ver la semana"}</button></section>`;
+  const gap = busy.length && busy[0].date !== days[0].date ? `<div class="day-gap">Sin tareas hasta ${dayPhrase(busy[0].date, today).replace(/^el /, "el ")}</div>` : "";
+  const body = busy.length ? gap + rows : `<div class="day-gap">Sin tareas en los próximos 7 días</div>`;
+  return `<section class="card"><div class="sec">Próximos días <span class="meta">7 días</span></div>${body}
+    ${busy.length > 3 ? `<button type="button" class="link-btn" data-action="toggle-week">${weekOpen ? "Ver menos" : "Ver la semana"}</button>` : ""}</section>`;
 }
 
 function plantsView() {
@@ -286,7 +305,13 @@ async function upgradePlants() {
 
 function render() {
   const loc = state.loc ?? DEFAULT_LOC;
-  $("placeBtn").textContent = `📍 ${loc.name}`;
+  $("placeBtn").innerHTML = `${ICONS.pin}${esc(loc.name)}`;
+  // Header: the tab's name, with today's date under «Hoy» and the count under «Plantas».
+  const n = state.data.plants.length;
+  $("title").textContent = { today: "Hoy", plants: "Plantas", more: "Ajustes" }[state.tab] ?? "Mi Jardín";
+  $("subtitle").textContent = state.tab === "today"
+    ? fmtDate(localToday(), { weekday: "long", day: "numeric", month: "long" }).replace(/^./, (c) => c.toUpperCase())
+    : state.tab === "plants" ? (n === 1 ? "1 planta" : `${n} plantas`) : "Mi Jardín";
   document.querySelectorAll(".tabbar button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
   $("fab").hidden = state.tab === "more";
   // Dot on Ajustes while some plant sheet has improvements to fetch.
@@ -648,11 +673,24 @@ async function aiFill(query) {
 // (Emoji stay for content: forecast, task rows, plant placeholders.)
 const svg = (d) => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const ICONS = {
+  droplet: svg('<path d="M7.5 19.4a7.2 7.2 0 0 0 9 0 6.5 6.5 0 0 0 1.6-8.5l-4.9-7.3a1.4 1.4 0 0 0-2.4 0l-4.9 7.3a6.5 6.5 0 0 0 1.6 8.5z"/>'),
+  flask: svg('<path d="M9 3h6M10 9h4M10 3v6l-4 11a.7.7 0 0 0 .5 1h11a.7.7 0 0 0 .5-1l-4-11V3"/>'),
+  check: svg('<path d="M5 12l5 5L20 7"/>'),
+  circleCheck: svg('<circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/>'),
+  pin: svg('<circle cx="12" cy="11" r="3"/><path d="M17.7 16.7l-4.3 4.2a2 2 0 0 1-2.8 0l-4.3-4.2a8 8 0 1 1 11.4 0z"/>'),
+  cloud: svg('<path d="M7 18a4.6 4.4 0 0 1 0-9 5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7H7z"/>'),
+  "cloud-rain": svg('<path d="M7 18a4.6 4.4 0 0 1 0-9 5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7"/><path d="M11 13v2m0 3v2m4-5v2m0 3v2"/>'),
+  "cloud-storm": svg('<path d="M7 18a4.6 4.4 0 0 1 0-9 5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1"/><path d="M13 14l-2 4h3l-2 4"/>'),
+  "cloud-sun": svg('<path d="M9 3.5v1M4.3 5.3l.7.7M3 10h1M13.7 5.3l-.7.7"/><path d="M6 12.5a3.5 3.5 0 1 1 6.6-2"/><path d="M9.5 20a3.4 3.4 0 0 1 0-6.8 4 4 0 0 1 7.7 1.3h.6a2.8 2.8 0 0 1 0 5.5z"/>'),
+  fog: svg('<path d="M5 5h3m4 0h9M3 10h11m4 0h1M5 15h5m4 0h7M3 20h9m4 0h3"/>'),
+  wind: svg('<path d="M5 8h8.5a2.5 2.5 0 1 0-2.3-3.2M3 12h15.5a2.5 2.5 0 1 1-2.3 3.2M4 16h5.5a2.5 2.5 0 1 1-2.3 3.2"/>'),
+  flame: svg('<path d="M12 11c2.3-3.3.2-7.8-1-9 0 3.4-2.2 5.3-3.7 6.7C5.9 10.1 5 12.3 5 14.3 5 18 8.1 21 12 21s7-3 7-6.7c0-1.7-1.2-4.4-2.3-5.6-2.1 3.4-3.3 3.4-4.7 2.3z"/>'),
+  alert: svg('<path d="M12 9v4M12 17h.01"/><path d="M10.4 3.9L2.6 17.5A1.8 1.8 0 0 0 4.1 20h15.8a1.8 1.8 0 0 0 1.5-2.5L13.6 3.9a1.8 1.8 0 0 0-3.2 0z"/>'),
   pot: svg('<path d="M5 10h14l-1.6 9.1a1 1 0 0 1-1 .9H7.6a1 1 0 0 1-1-.9z"/><path d="M12 10V6"/><path d="M12 6c0-2 1.5-3 3.5-3 0 2-1.5 3-3.5 3zM12 7.5C12 6 10.8 5 9 5c0 1.5 1.2 2.5 3 2.5z"/>'),
   ground: svg('<path d="M3 19h18M7 22h10"/><path d="M12 19v-8"/><path d="M12 11c0-3 2-5 5.5-5 0 3-2 5-5.5 5zM12 14c0-2.5-1.8-4-4.5-4 0 2.5 1.8 4 4.5 4z"/>'),
   rain: svg('<path d="M7 14.5A4 4 0 0 1 7.6 6.6 5.5 5.5 0 0 1 18 8.5a3 3 0 0 1-.5 6z"/><path d="M8 18l-1 2.5M12 18l-1 2.5M16 18l-1 2.5"/>'),
   umbrella: svg('<path d="M3 12a9 9 0 0 1 18 0z"/><path d="M12 12v6.5a2 2 0 0 0 4 0"/><path d="M12 3v.01"/>'),
-  snow: svg('<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.5 12 6l2.5-1.5M9.5 19.5 12 18l2.5 1.5"/>'),
+  "snow": svg('<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.5 12 6l2.5-1.5M9.5 19.5 12 18l2.5 1.5"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
   leaf: svg('<path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19l7-7"/>'),
   sprout: svg('<path d="M12 20v-8"/><path d="M12 12c0-3 2-5 5.5-5 0 3-2 5-5.5 5zM12 14c0-2.5-1.8-4-4.5-4 0 2.5 1.8 4 4.5 4z"/>'),
