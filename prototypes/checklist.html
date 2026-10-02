@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototipo · checklist de cuidados</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" />
+<style>
+  :root { --bg: #f2f2f5; --card: #fff; --hair: rgba(0,0,0,.08); --text: #1d1d1f; --text2: #6e6e73; --text3: #a1a1a6; --track: rgba(0,0,0,.06);
+          --accent: #2f8f4e; --accent-soft: rgba(47,143,78,.12); --info: #2f6fd6; --info-soft: rgba(59,130,245,.12); --warn: #c7771a; --warn-soft: rgba(224,138,41,.14); --danger: #c93b30; --danger-soft: rgba(217,69,59,.12); --ai: #7a56d6; --ai-soft: rgba(122,86,214,.12); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1c1c1e; --hair: rgba(255,255,255,.1); --text: #f5f5f7; --text2: #98989d; --text3: #636366; --track: rgba(255,255,255,.1); --accent: #4cc26f; --accent-soft: rgba(76,194,111,.16); --info: #6aa2ff; --info-soft: rgba(106,162,255,.18); --warn: #f0a24a; --ai: #b9a3ff; --ai-soft: rgba(178,140,255,.16); } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #8a8a8a; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif; color: var(--text); padding: 20px; font-variant-numeric: tabular-nums; }
+  @media (prefers-color-scheme: dark) { body { background: #1a1a1a; } }
+  .note { color: #fff; font-size: 14px; max-width: 780px; margin: 0 0 14px; line-height: 1.5; } .note b { font-weight: 600; }
+  .phones { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .label { color: #fff; font-size: 13px; margin: 0 0 6px 4px; }
+  .phone { width: 360px; background: var(--bg); border-radius: 32px; padding: 20px 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .ti { line-height: 1; }
+  .head h1 { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -.8px; } .head .sub { font-size: 14px; color: var(--text2); margin-top: 2px; }
+  .card { background: var(--card); border: .5px solid var(--hair); border-radius: 20px; padding: 16px; }
+  .sec { font-size: 15px; font-weight: 600; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .meta { font-size: 13px; font-weight: 500; color: var(--text2); }
+  .muted { color: var(--text2); font-size: 13px; }
+  .ai { color: var(--ai); }
+  .faded { opacity: .55; }
+
+  /* Checklist rows */
+  .ck { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: .5px solid var(--hair); cursor: pointer; }
+  .ck:first-of-type { border-top: 0; padding-top: 0; }
+  .box { width: 24px; height: 24px; border-radius: 7px; border: 1.5px solid var(--text3); flex: none; display: grid; place-items: center; color: transparent; margin-top: 1px; transition: all .15s; }
+  .ck.done .box { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ck .body { flex: 1; min-width: 0; }
+  .ck b { font-weight: 600; font-size: 15px; display: block; }
+  .ck.done b { text-decoration: line-through; color: var(--text2); }
+  .ck .how { font-size: 13px; color: var(--text2); line-height: 1.4; margin-top: 2px; }
+  .ck .when { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; margin-top: 5px; color: var(--text2); }
+  .ck .when.soon { color: var(--warn); }
+  .ck .plant { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--accent); margin-top: 4px; }
+  .kind { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; font-size: 18px; flex: none; }
+  .kind.prune { background: var(--accent-soft); color: var(--accent); } .kind.treat { background: var(--danger-soft); color: var(--danger); }
+  .kind.protect { background: var(--info-soft); color: var(--info); } .kind.mulch { background: var(--warn-soft); color: var(--warn); }
+  .kind.weather { background: var(--info-soft); color: var(--info); }
+
+  /* Weather-triggered */
+  .wx-flag { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 14px; background: var(--info-soft); margin-bottom: 10px; }
+  .wx-flag .ti { font-size: 20px; color: var(--info); margin-top: 1px; }
+  .wx-flag b { font-size: 14px; display: block; } .wx-flag span { font-size: 13px; color: var(--text2); }
+  /* weather flags all in the weather blue: lilac stays for the AI */
+
+  /* Year calendar */
+  .year { display: grid; grid-template-columns: 74px repeat(12, 1fr); gap: 4px 2px; align-items: center; font-size: 11px; }
+  .year .m { text-align: center; color: var(--text3); font-weight: 600; }
+  .year .m.now { color: var(--accent); }
+  .year .r { font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .year .r .ti { font-size: 14px; }
+  .year .c { height: 10px; border-radius: 3px; background: var(--track); }
+  .year .c.on { background: var(--accent); } .year .c.on.treat { background: var(--danger); } .year .c.on.protect { background: var(--info); } .year .c.on.mulch { background: var(--warn); } .year .c.on.feed { background: #e0a14a; }
+  .year .c.now { outline: 1.5px solid var(--text); outline-offset: 1px; }
+  .legend { font-size: 12px; color: var(--text2); margin-top: 10px; display: flex; gap: 6px; align-items: center; }
+  .progress { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; margin: -2px 0 12px; }
+  .progress span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .2s; }
+</style>
+</head>
+<body>
+<p class="note"><b>Propuesta: checklist de cuidados.</b> Marca las casillas para ver cómo se comporta. Los datos son de ejemplo: el calendario de cada planta lo genera la IA una sola vez; los avisos azules salen de reglas con el tiempo real (lluvia, helada, calor, viento), sin IA ni procesos diarios.</p>
+<div class="phones">
+
+<!-- HOY -->
+<div><p class="label">En Hoy: «Esta semana en el jardín»</p>
+<div class="phone">
+  <div class="head"><h1>Hoy</h1><div class="sub">Viernes, 2 de octubre</div></div>
+  <div class="card" style="padding:12px 16px"><div class="sec" style="margin:0">Para hoy <span class="meta">2 ›</span></div></div>
+  <div class="card" id="week">
+    <div class="sec">Esta semana en el jardín <span class="meta" id="weekCount"></span></div>
+    <div class="progress"><span id="weekBar"></span></div>
+    <div class="wx-flag"><i class="ti ti-cloud-rain"></i><div><b>Tras 3 días de lluvia</b><span>Revisa hongos y caracoles en el rosal y la hortensia.</span></div></div>
+    <div class="wx-flag cold"><i class="ti ti-snowflake"></i><div><b>Primeras noches frías el martes (4°)</b><span>Ten a mano manta térmica para el limonero.</span></div></div>
+    <div class="ck" data-t><span class="box"><i class="ti ti-check"></i></span><div class="body"><b>Retirar hojas caídas</b><div class="how">Evita hongos durante el otoño húmedo.</div><span class="plant"><i class="ti ti-plant-2"></i>Glicinia · Rosal</span></div></div>
+    <div class="ck" data-t><span class="box"><i class="ti ti-check"></i></span><div class="body"><b>Último tratamiento contra cochinilla</b><div class="how">Aceite de neem en el envés de las hojas, al atardecer.</div><span class="plant"><i class="ti ti-plant-2"></i>Limonero</span> <span class="when soon"><i class="ti ti-clock"></i>Hasta el 31 oct</span></div></div>
+    <div class="ck done" data-t><span class="box"><i class="ti ti-check"></i></span><div class="body"><b>Acolchar la base con compost</b><div class="how">Protege las raíces del frío que viene.</div><span class="plant"><i class="ti ti-plant-2"></i>Hortensia</span></div></div>
+  </div>
+  <div class="card" style="padding:12px 16px"><div class="sec" style="margin:0">Próximos días <span class="meta">7 días ›</span></div></div>
+</div></div>
+
+<!-- FICHA -->
+<div><p class="label">En la ficha de la planta</p>
+<div class="phone">
+  <div class="sec" style="font-size:22px;font-weight:700;margin:0">Limonero <span class="meta" style="font-size:14px">Editar · Cerrar</span></div>
+  <div class="muted"><i>Citrus limon</i> <span class="ai">✦</span> · Terraza sur</div>
+  <div class="card faded"><div class="sec" style="margin:0">Ahora · otoño <span class="meta">riego, abono, consejo…</span></div></div>
+  <div class="card" id="month">
+    <div class="sec">Este mes · octubre <span class="meta ai">✦</span></div>
+    <div class="ck" data-t><span class="kind treat"><i class="ti ti-bug"></i></span><div class="body"><b>Tratamiento contra cochinilla</b><div class="how">Aceite de neem en el envés, al atardecer. Repite a los 15 días.</div><span class="when soon"><i class="ti ti-clock"></i>Hasta el 31 oct</span></div><span class="box"><i class="ti ti-check"></i></span></div>
+    <div class="ck" data-t><span class="kind mulch"><i class="ti ti-shovel"></i></span><div class="body"><b>Acolchar la base</b><div class="how">5 cm de corteza o compost para proteger las raíces.</div><span class="when"><i class="ti ti-calendar"></i>Oct – nov</span></div><span class="box"><i class="ti ti-check"></i></span></div>
+    <div class="ck" data-t><span class="kind weather"><i class="ti ti-snowflake"></i></span><div class="body"><b>Preparar protección del frío</b><div class="how">El martes bajará a 4°: ten a mano la manta térmica.</div><span class="when" style="color:var(--info)"><i class="ti ti-cloud"></i>Por el tiempo</span></div><span class="box"><i class="ti ti-check"></i></span></div>
+  </div>
+  <div class="card">
+    <div class="sec">Calendario del año <span class="meta ai">✦</span></div>
+    <div class="year" id="year"></div>
+    <div class="legend"><span style="display:inline-block;width:12px;height:8px;border-radius:2px;outline:1.5px solid var(--text);outline-offset:1px"></span>Mes actual · al marcar una tarea se apunta en el historial</div>
+  </div>
+</div></div>
+
+</div>
+<script>
+  // Year calendar (example data)
+  const months = ["E","F","M","A","M","J","J","A","S","O","N","D"], now = 9;
+  const rows = [
+    ["ti-scissors", "Poda", "", [1, 2]],
+    ["ti-flask", "Abonado", "feed", [2, 3, 4, 5, 6, 7, 8]],
+    ["ti-plant", "Trasplante", "", [2, 3]],
+    ["ti-bug", "Tratamiento", "treat", [4, 9]],
+    ["ti-shovel", "Acolchado", "mulch", [9, 10]],
+    ["ti-snowflake", "Frío", "protect", [10, 11, 0, 1]],
+  ];
+  const y = document.getElementById("year");
+  y.innerHTML = `<span></span>` + months.map((m, i) => `<span class="m ${i === now ? "now" : ""}">${m}</span>`).join("") +
+    rows.map(([ic, label, cls, on]) => `<span class="r"><i class="ti ${ic}"></i>${label}</span>` +
+      months.map((_, i) => `<span class="c ${on.includes(i) ? "on " + cls : ""} ${i === now ? "now" : ""}"></span>`).join("")).join("");
+  // Checkboxes
+  const update = () => {
+    const all = document.querySelectorAll("#week .ck"), done = document.querySelectorAll("#week .ck.done");
+    document.getElementById("weekCount").textContent = `${done.length} de ${all.length}`;
+    document.getElementById("weekBar").style.width = `${Math.round(done.length / all.length * 100)}%`;
+  };
+  document.addEventListener("click", (e) => { const ck = e.target.closest("[data-t]"); if (ck) { ck.classList.toggle("done"); update(); } });
+  update();
+</script>
+</body>
+</html>
