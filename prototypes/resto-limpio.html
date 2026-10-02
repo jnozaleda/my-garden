@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototipo · Plantas, ficha y Ajustes</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" />
+<style>
+  :root { --bg: #f2f2f5; --card: #fff; --hair: rgba(0,0,0,.08); --text: #1d1d1f; --text2: #6e6e73; --text3: #a1a1a6; --track: rgba(0,0,0,.06);
+          --accent: #2f8f4e; --accent-soft: rgba(47,143,78,.12); --info: #2f6fd6; --info-soft: rgba(59,130,245,.12); --warn: #c7771a; --warn-soft: rgba(224,138,41,.14); --danger: #c93b30; --ai: #7a56d6; --ai-soft: rgba(122,86,214,.12); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1c1c1e; --hair: rgba(255,255,255,.1); --text: #f5f5f7; --text2: #98989d; --text3: #636366; --track: rgba(255,255,255,.1); --accent: #4cc26f; --accent-soft: rgba(76,194,111,.16); --info: #6aa2ff; --info-soft: rgba(106,162,255,.18); --warn: #f0a24a; --ai: #b9a3ff; --ai-soft: rgba(178,140,255,.16); } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #8a8a8a; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif; color: var(--text); padding: 20px; font-variant-numeric: tabular-nums; }
+  @media (prefers-color-scheme: dark) { body { background: #1a1a1a; } }
+  .note { color: #fff; font-size: 14px; max-width: 780px; margin: 0 0 14px; line-height: 1.5; } .note b { font-weight: 600; }
+  .phones { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .label { color: #fff; font-size: 13px; margin: 0 0 6px 4px; }
+  .phone { width: 360px; background: var(--bg); border-radius: 32px; padding: 22px 16px 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+  .ti { line-height: 1; }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; }
+  .head h1 { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -.8px; } .head .sub { font-size: 14px; color: var(--text2); margin-top: 2px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; background: var(--card); border: .5px solid var(--hair); border-radius: 999px; padding: 6px 10px; }
+  .card { background: var(--card); border: .5px solid var(--hair); border-radius: 20px; padding: 16px; }
+  .group-title { font-size: 13px; font-weight: 600; color: var(--text2); margin: 6px 4px -4px; }
+  .sec { font-size: 15px; font-weight: 600; margin: 0 0 12px; display: flex; justify-content: space-between; align-items: baseline; }
+  .meta { font-size: 13px; font-weight: 500; color: var(--text2); }
+  .muted { color: var(--text2); font-size: 13px; }
+
+  /* Plantas */
+  .p-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: .5px solid var(--hair); }
+  .p-row:first-child { border-top: 0; padding-top: 0; } .p-row:last-child { padding-bottom: 0; }
+  .ph { width: 48px; height: 48px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-size: 24px; flex: none; overflow: hidden; }
+  .ph.photo { background: linear-gradient(135deg, #7fb77e, #3e7f4d); color: #fff; }
+  .p-body { flex: 1; min-width: 0; } .p-name { font-weight: 600; font-size: 15px; } .p-sp { font-size: 13px; color: var(--text2); font-style: italic; }
+  .status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; margin-top: 3px; color: var(--text2); }
+  .status.today { color: var(--info); } .status.late { color: var(--danger); }
+  .chev { color: var(--text3); font-size: 18px; }
+
+  /* Ficha */
+  .sheet { background: var(--bg); }
+  .s-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .s-head h2 { margin: 0; font-size: 22px; font-weight: 700; }
+  .btns { display: flex; gap: 6px; } .b { border-radius: 10px; padding: 6px 12px; font-size: 14px; font-weight: 600; background: var(--track); }
+  .hero { height: 150px; border-radius: 18px; background: linear-gradient(135deg, #a8d5a2, #4f8f58); display: grid; place-items: center; color: rgba(255,255,255,.85); font-size: 48px; }
+  .traits { display: flex; flex-wrap: wrap; gap: 6px; }
+  .trait { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; background: var(--card); border: .5px solid var(--hair); border-radius: 999px; padding: 5px 10px; color: var(--text2); }
+  .trait .ti { font-size: 15px; }
+  .n-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: .5px solid var(--hair); }
+  .n-row:first-of-type { border-top: 0; padding-top: 0; }
+  .t-ico { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 19px; flex: none; }
+  .t-ico.water { background: var(--info-soft); color: var(--info); } .t-ico.feed { background: var(--warn-soft); color: var(--warn); }
+  .n-row b { font-weight: 600; font-size: 15px; display: block; } .n-row span { font-size: 13px; color: var(--text2); }
+  .tag { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
+  .ai { color: var(--ai); }
+  .next { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2); margin-top: 10px; padding-top: 10px; border-top: .5px solid var(--hair); }
+  .acts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .act { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text2); padding: 8px 0; border-radius: 12px; background: var(--bg); }
+  .act .ti { font-size: 21px; color: var(--text); }
+  .h-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: .5px solid var(--hair); font-size: 14px; }
+  .h-row:first-of-type { border-top: 0; padding-top: 0; }
+  .h-row .ti { font-size: 16px; } .h-row .d { margin-left: auto; color: var(--text3); font-size: 13px; }
+
+  /* Ajustes */
+  .list { padding: 4px 16px; }
+  .l-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: .5px solid var(--hair); font-size: 15px; }
+  .l-row:first-child { border-top: 0; }
+  .l-ico { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-size: 17px; color: #fff; flex: none; }
+  .l-row .v { margin-left: auto; color: var(--text2); font-size: 14px; display: flex; align-items: center; gap: 4px; }
+  .ok { color: var(--accent); } .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+  .foot { font-size: 12px; color: var(--text2); margin: -4px 4px 4px; line-height: 1.4; }
+
+  .tabbar { display: flex; justify-content: space-around; border-top: .5px solid var(--hair); margin: 0 -16px; padding: 8px 0 22px; background: var(--bg); }
+  .tabbar div { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--text3); min-width: 72px; }
+  .tabbar svg, .fab svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .tabbar .on { color: var(--accent); }
+  .fab-wrap { display: flex; justify-content: flex-end; margin: -6px 2px 6px; }
+  .fab { width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+  .fab svg { width: 28px; height: 28px; stroke-width: 2.4; }
+</style>
+</head>
+<body>
+<p class="note"><b>Propuesta: mismo estilo que el nuevo Hoy.</b> Títulos de sección en minúscula · iconos de línea en vez de emojis · menos cajas grises y más filas limpias · se conservan la barra de abajo, el + y el verde. El alta y Editar ya siguen este estilo: solo cambiarían sus títulos e iconos de la misma forma.</p>
+<div class="phones">
+
+<!-- PLANTAS -->
+<div><p class="label">Plantas</p>
+<div class="phone">
+  <div class="head"><div><h1>Plantas</h1><div class="sub">5 plantas</div></div><span class="pill"><i class="ti ti-map-pin"></i>Madrid</span></div>
+  <div class="group-title">Terraza sur · 3</div>
+  <div class="card">
+    <div class="p-row"><span class="ph photo"><i class="ti ti-lemon-2"></i></span><div class="p-body"><div class="p-name">Limonero</div><div class="p-sp">Citrus limon</div><span class="status late"><i class="ti ti-droplet"></i>Regar · atrasado 1 día</span></div><i class="ti ti-chevron-right chev"></i></div>
+    <div class="p-row"><span class="ph"><i class="ti ti-plant"></i></span><div class="p-body"><div class="p-name">Albahaca</div><div class="p-sp">Ocimum basilicum</div><span class="status today"><i class="ti ti-droplet"></i>Regar hoy</span></div><i class="ti ti-chevron-right chev"></i></div>
+    <div class="p-row"><span class="ph"><i class="ti ti-flower"></i></span><div class="p-body"><div class="p-name">Geranio</div><div class="p-sp">Pelargonium × hortorum</div><span class="status"><i class="ti ti-droplet"></i>Regar en 2 días</span></div><i class="ti ti-chevron-right chev"></i></div>
+  </div>
+  <div class="group-title">Jardín · 2</div>
+  <div class="card">
+    <div class="p-row"><span class="ph photo"><i class="ti ti-flower"></i></span><div class="p-body"><div class="p-name">Rosal trepador</div><div class="p-sp">Rosa</div><span class="status"><i class="ti ti-droplet"></i>Regar en 3 días</span></div><i class="ti ti-chevron-right chev"></i></div>
+    <div class="p-row"><span class="ph"><i class="ti ti-leaf"></i></span><div class="p-body"><div class="p-name">Jazmín</div><div class="p-sp">Jasminum officinale</div><span class="status"><i class="ti ti-droplet"></i>Regar en 5 días</span></div><i class="ti ti-chevron-right chev"></i></div>
+  </div>
+  <div class="fab-wrap"><span class="fab"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></div>
+  <nav class="tabbar">
+    <div><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Hoy</div>
+    <div class="on"><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/><path d="M12 15c0-3-2-5.5-6-5.5 0 4 2 6 6 5.5z"/></svg>Plantas</div>
+    <div><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Ajustes</div>
+  </nav>
+</div></div>
+
+<!-- FICHA -->
+<div><p class="label">Ficha de una planta</p>
+<div class="phone sheet" style="padding-bottom:20px">
+  <div class="s-head"><h2>Limonero</h2><div class="btns"><span class="b">Editar</span><span class="b">Cerrar</span></div></div>
+  <div class="hero"><i class="ti ti-lemon-2"></i></div>
+  <div class="muted"><i>Citrus limon</i> <span class="ai">✦</span> · Terraza sur</div>
+  <div class="traits"><span class="trait"><i class="ti ti-bucket"></i>Maceta</span><span class="trait"><i class="ti ti-cloud-rain"></i>Le llega la lluvia</span><span class="trait"><i class="ti ti-snowflake"></i>Sensible a heladas</span></div>
+  <div class="card">
+    <div class="sec">Ahora · otoño</div>
+    <div class="n-row"><span class="t-ico water"><i class="ti ti-droplet"></i></span><div><b>Regar en 2 días</b><span>Domingo 4 oct</span></div><span class="tag">cada 5 d <span class="ai">✦</span></span></div>
+    <div class="n-row"><span class="t-ico feed"><i class="ti ti-flask"></i></span><div><b>Sin abonar en otoño</b><span>Vuelve en primavera</span></div></div>
+    <div class="next"><i class="ti ti-calendar-event"></i>El 1 de diciembre pasa a invierno: regar cada 10 días</div>
+  </div>
+  <div class="card">
+    <div class="sec">Registrar</div>
+    <div class="acts"><span class="act"><i class="ti ti-droplet"></i>Regado</span><span class="act"><i class="ti ti-flask"></i>Abonado</span><span class="act"><i class="ti ti-scissors"></i>Podado</span><span class="act"><i class="ti ti-bug"></i>Tratado</span><span class="act"><i class="ti ti-notes"></i>Nota</span></div>
+  </div>
+  <div class="card">
+    <div class="sec" style="justify-content:flex-start;gap:6px">Notas <span class="ai" style="font-size:14px">✦</span></div>
+    <div class="muted" style="font-size:14px;line-height:1.45">Poda ligera en primavera para mantener la forma. Protege de heladas fuertes con manta térmica…</div>
+  </div>
+  <div class="card">
+    <div class="sec">Historial</div>
+    <div class="h-row"><i class="ti ti-droplet" style="color:var(--info)"></i>Regado<span class="d">29 sept</span></div>
+    <div class="h-row"><i class="ti ti-flask" style="color:var(--warn)"></i>Abonado<span class="d">12 sept</span></div>
+  </div>
+  <div class="muted" style="text-align:center"><span class="ai">✦</span> Propuesto por la IA el 1 de octubre · 1 dato cambiado por ti</div>
+</div></div>
+
+<!-- AJUSTES -->
+<div><p class="label">Ajustes</p>
+<div class="phone">
+  <div class="head"><div><h1>Ajustes</h1><div class="sub">Mi Jardín</div></div></div>
+  <div class="group-title">General</div>
+  <div class="card list">
+    <div class="l-row"><span class="l-ico" style="background:#3b82f6"><i class="ti ti-map-pin"></i></span>Ubicación<span class="v">Madrid<i class="ti ti-chevron-right chev"></i></span></div>
+    <div class="l-row"><span class="l-ico" style="background:#7a56d6"><i class="ti ti-sparkles"></i></span>Asistente IA<span class="v ok"><i class="ti ti-circle-check"></i>Activado<i class="ti ti-chevron-right chev"></i></span></div>
+    <div class="l-row"><span class="l-ico" style="background:#c7771a"><i class="ti ti-refresh"></i></span>Fichas por actualizar<span class="v"><span class="dot"></span>3<i class="ti ti-chevron-right chev"></i></span></div>
+  </div>
+  <div class="group-title">Avisos y calendario</div>
+  <div class="card list">
+    <div class="l-row"><span class="l-ico" style="background:#c93b30"><i class="ti ti-bell"></i></span>Aviso diario<span class="v">Próximamente</span></div>
+    <div class="l-row"><span class="l-ico" style="background:#2f8f4e"><i class="ti ti-calendar"></i></span>Exportar al calendario<span class="v"><i class="ti ti-chevron-right chev"></i></span></div>
+  </div>
+  <div class="foot">Los riegos y abonados se añaden a tu calendario como eventos que se repiten por estación.</div>
+  <div class="group-title">Datos</div>
+  <div class="card list">
+    <div class="l-row"><span class="l-ico" style="background:#6e6e73"><i class="ti ti-download"></i></span>Exportar copia<span class="v"><i class="ti ti-chevron-right chev"></i></span></div>
+    <div class="l-row"><span class="l-ico" style="background:#6e6e73"><i class="ti ti-upload"></i></span>Importar copia<span class="v"><i class="ti ti-chevron-right chev"></i></span></div>
+  </div>
+  <div class="foot">Tus plantas se guardan solo en este móvil. Exporta una copia de vez en cuando.</div>
+  <nav class="tabbar" style="margin-top:6px">
+    <div><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Hoy</div>
+    <div><svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/><path d="M12 15c0-3-2-5.5-6-5.5 0 4 2 6 6 5.5z"/></svg>Plantas</div>
+    <div class="on"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Ajustes</div>
+  </nav>
+</div></div>
+
+</div>
+</body>
+</html>
