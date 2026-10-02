@@ -260,7 +260,7 @@ function cors(request, env) {
   const origin = request.headers.get("Origin") ?? "";
   const allowed = env.ALLOWED_ORIGINS.split(",").map((s) => s.trim());
   return allowed.includes(origin)
-    ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET,POST,OPTIONS", "Access-Control-Allow-Headers": "Content-Type,X-Access-Code", "Vary": "Origin" }
+    ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS", "Access-Control-Allow-Headers": "Content-Type,X-Access-Code,X-Device", "Vary": "Origin" }
     : {};
 }
 
@@ -414,6 +414,62 @@ async function handleCalendar(request, env, headers, ctx) {
   return json(cal, 200, headers);
 }
 
+
+// ---------- Garden sync ----------
+// A garden lives in KV under the hash of its secret key (the key itself is never stored). Whoever has
+// the key can read and write it: that's how a garden is shared. Clients send their whole garden; the
+// Worker merges it with what's stored (newest change wins per plant / log entry, deletions kept as
+// tombstones) and returns the result, so two phones editing at once don't overwrite each other.
+// Keep mergeGardens identical to the copy in app/sync.js.
+const GARDEN_MAX = 20 * 1024 * 1024;
+const KEY_RE = /^[A-Z0-9]{16}$/;
+function mergeGardens(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  const deleted = { ...(a.deleted ?? {}) };
+  for (const [id, at] of Object.entries(b.deleted ?? {})) deleted[id] = Math.max(deleted[id] ?? 0, at);
+  const merge = (x = [], y = []) => {
+    const byId = new Map();
+    for (const item of [...x, ...y]) {
+      const prev = byId.get(item.id);
+      if (!prev || (item._at ?? 0) > (prev._at ?? 0)) byId.set(item.id, item);
+    }
+    return [...byId.values()].filter((item) => !(deleted[item.id] >= (item._at ?? 0)));
+  };
+  const settings = (a.settingsAt ?? 0) >= (b.settingsAt ?? 0) ? a : b;
+  return {
+    plants: merge(a.plants, b.plants),
+    log: merge(a.log, b.log),
+    deleted,
+    pausedZones: settings.pausedZones ?? [],
+    settingsAt: settings.settingsAt ?? 0,
+  };
+}
+async function gardenKey(key) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`garden:${key}`));
+  return `garden:${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+async function handleGarden(request, env, headers, key) {
+  if (!KEY_RE.test(key)) return json({ error: "key" }, 400, headers);
+  const kvKey = await gardenKey(key);
+  const stored = await env.CACHE.get(kvKey, "json");
+  if (request.method === "GET") return stored ? json(stored, 200, headers) : json({ error: "not_found" }, 404, headers);
+  const text = await request.text();
+  if (text.length > GARDEN_MAX) return json({ error: "too_big" }, 413, headers);
+  let incoming;
+  try { incoming = JSON.parse(text); } catch { return json({ error: "input" }, 400, headers); }
+  if (!Array.isArray(incoming.plants) || !Array.isArray(incoming.log)) return json({ error: "input" }, 400, headers);
+  const merged = mergeGardens(stored, incoming);
+  // Devices seen in the last 60 days (hashed ids), for «N dispositivos».
+  const device = (request.headers.get("X-Device") ?? "").slice(0, 64);
+  const devices = { ...(stored?.devices ?? {}) };
+  if (device) devices[(await hashId(device)).slice(0, 12)] = Date.now();
+  for (const [d, at] of Object.entries(devices)) if (Date.now() - at > 60 * 86400000) delete devices[d];
+  const doc = { ...merged, devices, updatedAt: Date.now() };
+  await env.CACHE.put(kvKey, JSON.stringify(doc));
+  return json(doc, 200, headers);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const headers = cors(request, env);
@@ -425,6 +481,8 @@ export default {
     if (pathname === "/calendar" && request.method === "POST") return handleCalendar(request, env, headers, ctx);
     if (pathname === "/event" && request.method === "POST") return handleEvent(request, env, headers);
     if (pathname === "/stats") return handleStats(request, env, headers);
+    const garden = pathname.match(/^\/garden\/([^/]+)$/);
+    if (garden && (request.method === "GET" || request.method === "PUT")) return handleGarden(request, env, headers, garden[1]);
     return json({ error: "not_found" }, 404, headers);
   },
 };

@@ -1,11 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002t";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002u";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel,
-} from "./rules.js?v=20261002t";
-import { buildICS } from "./calendar.js?v=20261002t";
+} from "./rules.js?v=20261002u";
+import { buildICS } from "./calendar.js?v=20261002u";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden } from "./sync.js?v=20261002u";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -30,6 +31,11 @@ const state = {
   weatherError: false,
 };
 
+// Sync bookkeeping (see «Sync» below): what each plant/log entry looked like at the last save.
+let syncHashes = hashesOf(state.data);
+let pushTimer = null;
+let syncStatus = { at: store.get("mj_sync", {})?.at ?? null, error: null, devices: store.get("mj_sync", {})?.devices ?? 0 };
+
 function save() {
   // A paused zone switches irrigation off for its plants (they keep «tiene riego»).
   for (const p of state.data.plants) {
@@ -37,6 +43,8 @@ function save() {
     if (!p.irrigationOff) delete p.irrigationOffSince;
     else p.irrigationOffSince ??= localToday();
   }
+  syncHashes = stampChanges(state.data, syncHashes);
+  if (syncKey()) schedulePush();
   if (!store.set("mj_data", state.data)) alert("No se ha podido guardar: el almacenamiento del navegador está lleno. Prueba con fotos más pequeñas o exporta una copia.");
 }
 
@@ -386,6 +394,112 @@ function autoHint(p, season) {
   return every ? ` · en ${SEASON_LABEL[next].toLowerCase()}, cada ${every}` : "";
 }
 
+// ---------- Sync («clave del jardín», see sync.js) ----------
+// After each save the changes go up a few seconds later, in one request (the free KV allows ~1,000
+// writes a day); the garden comes down when the app opens or comes back to the foreground.
+const syncKey = () => store.get("mj_sync", null)?.key ?? null;
+const gardenLink = (key) => `${location.origin}${location.pathname}#jardin=${key}`;
+function schedulePush() {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushNow, 4000);
+}
+async function pushNow() {
+  clearTimeout(pushTimer);
+  const key = syncKey();
+  if (!key) return;
+  try { applyRemote(await putGarden(API, key, state.data, deviceId)); }
+  catch (err) { syncStatus.error = err.message; }
+}
+async function pullNow() {
+  const key = syncKey();
+  if (!key) return;
+  try {
+    const remote = await fetchGarden(API, key);
+    if (!remote) return pushNow();
+    applyRemote(remote);
+  } catch (err) { syncStatus.error = err.message; }
+}
+// Merge what the server has into this phone; if this phone still has something the server lacks, push again.
+function applyRemote(remote) {
+  const before = docHash(state.data);
+  const merged = mergeGardens(gardenDoc(state.data), gardenDoc(remote));
+  state.data = { ...state.data, ...merged };
+  syncHashes = hashesOf(state.data);
+  for (const p of state.data.plants) p.irrigationOff = Boolean(p.autoWater && (state.data.pausedZones ?? []).includes(p.zone || ""));
+  store.set("mj_data", state.data);
+  syncStatus = { at: Date.now(), error: null, devices: Object.keys(remote.devices ?? {}).length };
+  store.set("mj_sync", { key: syncKey(), at: syncStatus.at, devices: syncStatus.devices });
+  if (docHash(state.data) !== docHash(remote)) schedulePush();
+  if (docHash(state.data) !== before) render();
+  if ($("syncSheet")) syncSheet();
+}
+const ago = (t) => {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? "ahora mismo" : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`;
+};
+function syncSheet(message = null, enterKey = false) {
+  const key = syncKey();
+  if (!key) {
+    openSheet(`<div id="syncSheet"></div>
+      <div class="sheet-head"><h2>Sincronizar</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
+      <p>Guarda tu jardín en el servidor de Mi Jardín para tenerlo igual en varios móviles o compartirlo con otra persona.</p>
+      <p class="muted small">Tu jardín tendrá una clave secreta: quien la tenga puede verlo y editarlo. No hace falta crear cuenta.</p>
+      ${message ? `<p class="ai-status warn">${esc(message)}</p>` : ""}
+      ${enterKey ? `<input id="syncKeyInput" class="big-input key-input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+        <button class="btn block" data-action="sync-enter-key">Continuar</button>`
+        : `<button class="btn block" data-action="sync-on">Activar sincronización</button>
+        <button class="btn block secondary" data-action="sync-have-key">Ya tengo una clave</button>`}`);
+    if (enterKey) setTimeout(() => $("syncKeyInput")?.focus(), 50);
+    return;
+  }
+  const n = state.data.plants.length;
+  openSheet(`<div id="syncSheet"></div>
+    <div class="sheet-head"><h2>Sincronizar</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
+    <section class="card"><div class="sync-status ${syncStatus.error ? "warn" : ""}"><span class="dot"></span>${syncStatus.error ? "No se ha podido sincronizar: se reintentará" : syncStatus.at ? `Sincronizado ${ago(syncStatus.at)}` : "Sincronizando…"}</div>
+      <p class="muted small">${n === 1 ? "1 planta" : `${n} plantas`}${syncStatus.devices ? ` · ${syncStatus.devices === 1 ? "1 dispositivo" : `${syncStatus.devices} dispositivos`}` : ""}</p></section>
+    ${message ? `<p class="ai-status ok">${esc(message)}</p>` : ""}
+    <div class="group-title">Clave del jardín</div>
+    <div class="sync-key">${formatKey(key)}</div>
+    <div class="sync-qr" id="syncQr"></div>
+    <div class="two-btns"><button class="btn secondary" data-action="sync-copy">Copiar clave</button><button class="btn" data-action="sync-share">Compartir enlace</button></div>
+    <p class="muted small">Para tenerlo en otro móvil o compartirlo: abre el enlace allí, escanea el QR con la cámara o escribe la clave en «Ya tengo una clave».</p>
+    <button class="btn block danger-text" data-action="sync-off">Dejar de sincronizar en este móvil</button>`);
+  drawQr(gardenLink(key));
+}
+// QR code drawn by qrcode-generator (loaded on first use from jsDelivr).
+async function drawQr(text) {
+  if (!window.qrcode) {
+    await new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
+      s.onload = resolve; s.onerror = resolve;
+      document.head.append(s);
+    });
+  }
+  const el = $("syncQr");
+  if (!el || !window.qrcode) return;
+  const qr = window.qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 3, scalable: true });
+}
+// Joining a garden (from a #jardin= link or a typed key): show what it is, ask about this phone's plants.
+let joinRemote = null;
+async function joinSheet(key) {
+  openSheet(`<div class="sheet-head"><h2>Unirte a un jardín</h2><button class="btn small secondary" data-action="close">Cancelar</button></div><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Buscando el jardín…</div>`);
+  try { joinRemote = await fetchGarden(API, key); } catch { joinRemote = undefined; }
+  if (joinRemote === undefined) return syncSheet("No se ha podido conectar. Prueba otra vez.", true);
+  if (joinRemote === null) return syncSheet("No hay ningún jardín con esa clave.", true);
+  const names = joinRemote.plants.map(plantLabel);
+  const local = state.data.plants.length;
+  openSheet(`<div class="sheet-head"><h2>Unirte a un jardín</h2><button class="btn small secondary" data-action="close">Cancelar</button></div>
+    <section class="card"><b>Jardín con ${names.length === 1 ? "1 planta" : `${names.length} plantas`}</b><p class="muted small">${esc(names.slice(0, 6).join(", "))}${names.length > 6 ? "…" : ""}${joinRemote.updatedAt ? ` · actualizado ${ago(joinRemote.updatedAt)}` : ""}</p></section>
+    ${local ? `<p>Este móvil ya tiene ${local === 1 ? "1 planta" : `${local} plantas`}. ¿Qué hacemos con ${local === 1 ? "ella" : "ellas"}?</p>
+      <label class="join-opt"><input type="radio" name="joinMode" checked /><span><b>${local === 1 ? "Juntarla" : "Juntarlas"} con el jardín</b><small>${local === 1 ? "Se añade" : "Se añaden"} al jardín compartido.</small></span></label>
+      <label class="join-opt"><input type="radio" name="joinMode" id="joinReplace" /><span><b>Usar solo el jardín compartido</b><small>${local === 1 ? "Se quita la" : "Se quitan las"} de este móvil (antes se guarda una copia).</small></span></label>` : ""}
+    <div class="sheet-actions"><button class="btn block" data-action="sync-join" data-key="${key}">Unirme</button></div>`);
+}
+
 function moreView() {
   const loc = state.loc ?? DEFAULT_LOC;
   const aiOn = aiOpen === true || (aiCode() && codeStatus?.kind !== "warn");
@@ -397,6 +511,7 @@ function moreView() {
     <div class="group-title">General</div>
     <section class="card list-card settings">
       ${row("open-place", "pin", "#3b82f6", "Ubicación", esc(loc.name))}
+      ${row("open-sync", "sync", "#0a84ff", "Sincronizar", syncKey() ? `<span class="ok">${ICONS.circleCheck}Activada</span>` : "Desactivada")}
       ${row("open-ai", "sparkle", "#7a56d6", "Asistente IA", aiOn ? `<span class="ok">${ICONS.circleCheck}Activado</span>` : "Sin activar")}
       ${pending || upgrade ? row("open-upgrades", "refresh", "#c7771a", "Fichas por actualizar", pending ? `<span class="dot"></span>${pending}` : "Al día") : ""}
     </section>
@@ -1110,6 +1225,7 @@ const ICONS = {
   listView: svg('<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'),
   gridView: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
+  sync: svg('<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/>'),
   camera: svg('<path d="M5 7h1a2 2 0 0 0 2-2 1 1 0 0 1 1-1h6a1 1 0 0 1 1 1 2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/>'),
   bell: svg('<path d="M10 5a2 2 0 1 1 4 0 7 7 0 0 1 4 6v3a4 4 0 0 0 2 3H4a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>'),
   download: svg('<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5 5-5M12 4v12"/>'),
@@ -1474,6 +1590,50 @@ const actions = {
     render();
     plantSheet(p.id);
   },
+  "open-sync": () => syncSheet(),
+  "sync-on": async () => {
+    const key = newKey();
+    for (const item of [...state.data.plants, ...state.data.log]) item._at ??= Date.now();
+    store.set("mj_sync", { key });
+    syncSheet("Activando…");
+    await pushNow();
+    syncSheet();
+  },
+  "sync-have-key": () => syncSheet(null, true),
+  "sync-enter-key": () => {
+    const key = parseKey($("syncKeyInput")?.value);
+    if (!key) return syncSheet("Esa clave no es válida: son 16 letras y números.", true);
+    joinSheet(key);
+  },
+  "sync-copy": async () => { await navigator.clipboard?.writeText(formatKey(syncKey())).catch(() => {}); syncSheet("Clave copiada."); },
+  "sync-share": async () => {
+    const url = gardenLink(syncKey());
+    if (navigator.share) await navigator.share({ title: "Mi Jardín", text: "Únete a mi jardín en Mi Jardín:", url }).catch(() => {});
+    else { await navigator.clipboard?.writeText(url).catch(() => {}); syncSheet("Enlace copiado."); }
+  },
+  "sync-off": () => {
+    if (!confirm("¿Dejar de sincronizar en este móvil? Tus plantas se quedan aquí, pero los cambios ya no llegarán a los otros móviles.")) return;
+    localStorage.removeItem("mj_sync");
+    render();
+    syncSheet();
+  },
+  "sync-join": async (d) => {
+    const remote = joinRemote;
+    if (!remote) return;
+    store.set("mj_sync", { key: d.key });
+    if ($("joinReplace")?.checked) {
+      store.set("mj_backup_before_join", state.data);
+      state.data = { ...state.data, ...gardenDoc(remote) };
+      syncHashes = hashesOf(state.data);
+      store.set("mj_data", state.data);
+    } else {
+      for (const item of [...state.data.plants, ...state.data.log]) item._at ??= Date.now();
+      applyRemote(remote);
+    }
+    closeSheet();
+    render();
+    await pushNow();
+  },
   "plants-view": (d) => { store.set("mj_plants_view", d.view); render(); },
   "toggle-week-tasks": () => { weekAll = !weekAll; render(); },
   "toggle-done": () => { doneOpen = !doneOpen; render(); },
@@ -1645,11 +1805,23 @@ function flushEvents() {
   fetch(`${API}/event`, { method: "POST", keepalive: true, headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ device: deviceId, events: batch }) })
     .catch(() => { eventQueue = batch.concat(eventQueue); store.set("mj_events", eventQueue); });
 }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushEvents(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") { flushEvents(); if (pushTimer) pushNow(); }
+  else pullNow();
+});
 
 // ---------- Start ----------
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 render();
+// A shared-garden link (#jardin=KEY) opens the join sheet; otherwise bring the synced garden down.
+{
+  const linked = parseKey(new URLSearchParams(location.hash.slice(1)).get("jardin"));
+  if (linked) {
+    history.replaceState(null, "", location.pathname + location.search);
+    if (linked === syncKey()) pullNow();
+    else joinSheet(linked);
+  } else pullNow();
+}
 loadWeather();
 // One «open» per half hour at most, so switching apps back and forth doesn't inflate it.
 if (Date.now() - store.get("mj_last_open", 0) > 30 * 60000) { store.set("mj_last_open", Date.now()); track("app_open"); }

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sincronizar el jardín</title>
+<style>
+:root{--bg:#000;--card:#1c1c1e;--hair:#38383a;--muted:#8e8e93;--green:#6cc47a;--chip:#2c2c2e;--blue:#3b82f6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font:15px -apple-system,system-ui,sans-serif;padding:20px 16px}
+.wrap{display:flex;gap:26px;flex-wrap:wrap}.col{flex:1;min-width:300px;max-width:360px}
+h1{font-size:15px;color:var(--muted);font-weight:600;margin:0 0 6px}.note{color:var(--muted);font-size:13.5px;line-height:1.4;margin:0 0 14px;min-height:74px}
+.sheet{background:#111113;border-radius:22px;padding:16px}
+.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.head b{font-size:20px}
+.pill{background:var(--chip);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:600}
+.card{background:var(--card);border-radius:16px;padding:12px 14px;margin-bottom:12px}
+.row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:.5px solid var(--hair)}.row:first-child{border-top:0}
+.ico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none}
+svg.i{width:17px;height:17px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lbl{flex:1}.val{color:var(--muted);font-size:14px}.ok{color:var(--green);font-size:14px;font-weight:600}
+.grp{font-size:13px;color:var(--muted);font-weight:600;margin:14px 4px 6px}
+.btn{display:block;text-align:center;background:var(--green);color:#000;font-weight:700;border-radius:12px;padding:12px;margin-top:10px}
+.btn.sec{background:var(--chip);color:#fff}.btn.red{background:transparent;color:#ff6b5e}
+p{color:#d1d1d6;font-size:14px;line-height:1.45;margin:0 0 10px}
+.key{font:600 17px ui-monospace,Menlo,monospace;letter-spacing:1px;background:var(--chip);border-radius:12px;padding:12px;text-align:center;margin:8px 0}
+.qr{display:grid;place-items:center;margin:8px 0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.small{font-size:12.5px;color:var(--muted);line-height:1.4}
+.status{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--green);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.opt{background:var(--card);border-radius:14px;padding:12px;margin-top:8px;border:2px solid transparent}.opt.on{border-color:var(--green)}
+.opt b{display:block;margin-bottom:2px}.opt span{color:var(--muted);font-size:13px}
+</style></head><body><div class="wrap">
+
+<div class="col"><h1>1 · Ajustes → Sincronizar</h1>
+<p class="note">Nueva fila en Ajustes. Al principio, desactivada. Al tocarla se explica qué hace y se activa con un botón: sin cuentas ni contraseñas.</p>
+<div class="sheet">
+ <div class="grp" style="margin-top:0">General</div>
+ <div class="card">
+  <div class="row"><span class="ico" style="background:#3b82f6"><svg class="i" viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg></span><span class="lbl">Ubicación</span><span class="val">Madrid ›</span></div>
+  <div class="row"><span class="ico" style="background:#0a84ff"><svg class="i" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg></span><span class="lbl">Sincronizar</span><span class="val">Desactivada ›</span></div>
+ </div>
+ <div class="head" style="margin-top:16px"><b>Sincronizar</b><span class="pill">Cerrar</span></div>
+ <p>Guarda tu jardín en el servidor de Mi Jardín para tenerlo igual en varios móviles o compartirlo con otra persona.</p>
+ <p class="small">Tu jardín tendrá una clave secreta. Quien la tenga puede verlo y editarlo. No hace falta crear cuenta.</p>
+ <span class="btn">Activar sincronización</span>
+ <span class="btn sec">Ya tengo una clave</span>
+</div></div>
+
+<div class="col"><h1>2 · Activada: clave y compartir</h1>
+<p class="note">Estado de la última sincronización, la clave en grupos fáciles de dictar y un QR para el otro móvil. «Compartir enlace» abre el menú del móvil (WhatsApp, Mensajes…).</p>
+<div class="sheet">
+ <div class="head"><b>Sincronizar</b><span class="pill">Cerrar</span></div>
+ <div class="card"><div class="status"><span class="dot"></span>Sincronizado hace 1 min</div><div class="small" style="margin-top:4px">3 plantas · 2 dispositivos</div></div>
+ <div class="grp">Clave del jardín</div>
+ <div class="key">JRDN-7K4Q-M2XP-9WTA</div>
+ <div class="qr"><svg viewBox="-1 -1 23 23" width="150" height="150" style="background:#fff;border-radius:10px"><rect x="0" y="0" width="7" height="7" fill="#000"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3" fill="#000"/><rect x="14" y="0" width="7" height="7" fill="#000"/><rect x="15" y="1" width="5" height="5" fill="#fff"/><rect x="16" y="2" width="3" height="3" fill="#000"/><rect x="0" y="14" width="7" height="7" fill="#000"/><rect x="1" y="15" width="5" height="5" fill="#fff"/><rect x="2" y="16" width="3" height="3" fill="#000"/><rect x="8" y="0" width="1" height="1" fill="#000"/><rect x="9" y="0" width="1" height="1" fill="#000"/><rect x="11" y="0" width="1" height="1" fill="#000"/><rect x="8" y="1" width="1" height="1" fill="#000"/><rect x="9" y="1" width="1" height="1" fill="#000"/><rect x="11" y="1" width="1" height="1" fill="#000"/><rect x="12" y="1" width="1" height="1" fill="#000"/><rect x="8" y="2" width="1" height="1" fill="#000"/><rect x="9" y="2" width="1" height="1" fill="#000"/><rect x="10" y="2" width="1" height="1" fill="#000"/><rect x="12" y="2" width="1" height="1" fill="#000"/><rect x="8" y="3" width="1" height="1" fill="#000"/><rect x="12" y="3" width="1" height="1" fill="#000"/><rect x="9" y="4" width="1" height="1" fill="#000"/><rect x="11" y="4" width="1" height="1" fill="#000"/><rect x="12" y="4" width="1" height="1" fill="#000"/><rect x="8" y="5" width="1" height="1" fill="#000"/><rect x="9" y="5" width="1" height="1" fill="#000"/><rect x="11" y="5" width="1" height="1" fill="#000"/><rect x="9" y="6" width="1" height="1" fill="#000"/><rect x="11" y="6" width="1" height="1" fill="#000"/><rect x="12" y="6" width="1" height="1" fill="#000"/><rect x="8" y="7" width="1" height="1" fill="#000"/><rect x="10" y="7" width="1" height="1" fill="#000"/><rect x="11" y="7" width="1" height="1" fill="#000"/><rect x="0" y="8" width="1" height="1" fill="#000"/><rect x="1" y="8" width="1" height="1" fill="#000"/><rect x="4" y="8" width="1" height="1" fill="#000"/><rect x="9" y="8" width="1" height="1" fill="#000"/><rect x="11" y="8" width="1" height="1" fill="#000"/><rect x="12" y="8" width="1" height="1" fill="#000"/><rect x="14" y="8" width="1" height="1" fill="#000"/><rect x="15" y="8" width="1" height="1" fill="#000"/><rect x="16" y="8" width="1" height="1" fill="#000"/><rect x="0" y="9" width="1" height="1" fill="#000"/><rect x="4" y="9" width="1" height="1" fill="#000"/><rect x="7" y="9" width="1" height="1" fill="#000"/><rect x="9" y="9" width="1" height="1" fill="#000"/><rect x="14" y="9" width="1" height="1" fill="#000"/><rect x="15" y="9" width="1" height="1" fill="#000"/><rect x="17" y="9" width="1" height="1" fill="#000"/><rect x="18" y="9" width="1" height="1" fill="#000"/><rect x="19" y="9" width="1" height="1" fill="#000"/><rect x="20" y="9" width="1" height="1" fill="#000"/><rect x="0" y="10" width="1" height="1" fill="#000"/><rect x="2" y="10" width="1" height="1" fill="#000"/><rect x="3" y="10" width="1" height="1" fill="#000"/><rect x="4" y="10" width="1" height="1" fill="#000"/><rect x="6" y="10" width="1" height="1" fill="#000"/><rect x="7" y="10" width="1" height="1" fill="#000"/><rect x="12" y="10" width="1" height="1" fill="#000"/><rect x="13" y="10" width="1" height="1" fill="#000"/><rect x="14" y="10" width="1" height="1" fill="#000"/><rect x="17" y="10" width="1" height="1" fill="#000"/><rect x="18" y="10" width="1" height="1" fill="#000"/><rect x="19" y="10" width="1" height="1" fill="#000"/><rect x="20" y="10" width="1" height="1" fill="#000"/><rect x="0" y="11" width="1" height="1" fill="#000"/><rect x="2" y="11" width="1" height="1" fill="#000"/><rect x="3" y="11" width="1" height="1" fill="#000"/><rect x="4" y="11" width="1" height="1" fill="#000"/><rect x="5" y="11" width="1" height="1" fill="#000"/><rect x="12" y="11" width="1" height="1" fill="#000"/><rect x="17" y="11" width="1" height="1" fill="#000"/><rect x="18" y="11" width="1" height="1" fill="#000"/><rect x="19" y="11" width="1" height="1" fill="#000"/><rect x="0" y="12" width="1" height="1" fill="#000"/><rect x="1" y="12" width="1" height="1" fill="#000"/><rect x="2" y="12" width="1" height="1" fill="#000"/><rect x="3" y="12" width="1" height="1" fill="#000"/><rect x="4" y="12" width="1" height="1" fill="#000"/><rect x="5" y="12" width="1" height="1" fill="#000"/><rect x="6" y="12" width="1" height="1" fill="#000"/><rect x="7" y="12" width="1" height="1" fill="#000"/><rect x="8" y="12" width="1" height="1" fill="#000"/><rect x="9" y="12" width="1" height="1" fill="#000"/><rect x="10" y="12" width="1" height="1" fill="#000"/><rect x="13" y="12" width="1" height="1" fill="#000"/><rect x="14" y="12" width="1" height="1" fill="#000"/><rect x="15" y="12" width="1" height="1" fill="#000"/><rect x="16" y="12" width="1" height="1" fill="#000"/><rect x="17" y="12" width="1" height="1" fill="#000"/><rect x="20" y="12" width="1" height="1" fill="#000"/><rect x="8" y="13" width="1" height="1" fill="#000"/><rect x="9" y="13" width="1" height="1" fill="#000"/><rect x="10" y="13" width="1" height="1" fill="#000"/><rect x="11" y="13" width="1" height="1" fill="#000"/><rect x="12" y="13" width="1" height="1" fill="#000"/><rect x="14" y="13" width="1" height="1" fill="#000"/><rect x="15" y="13" width="1" height="1" fill="#000"/><rect x="18" y="13" width="1" height="1" fill="#000"/><rect x="20" y="13" width="1" height="1" fill="#000"/><rect x="12" y="14" width="1" height="1" fill="#000"/><rect x="13" y="14" width="1" height="1" fill="#000"/><rect x="14" y="14" width="1" height="1" fill="#000"/><rect x="18" y="14" width="1" height="1" fill="#000"/><rect x="19" y="14" width="1" height="1" fill="#000"/><rect x="13" y="15" width="1" height="1" fill="#000"/><rect x="15" y="15" width="1" height="1" fill="#000"/><rect x="16" y="15" width="1" height="1" fill="#000"/><rect x="17" y="15" width="1" height="1" fill="#000"/><rect x="18" y="15" width="1" height="1" fill="#000"/><rect x="19" y="15" width="1" height="1" fill="#000"/><rect x="9" y="16" width="1" height="1" fill="#000"/><rect x="13" y="16" width="1" height="1" fill="#000"/><rect x="14" y="16" width="1" height="1" fill="#000"/><rect x="15" y="16" width="1" height="1" fill="#000"/><rect x="16" y="16" width="1" height="1" fill="#000"/><rect x="17" y="16" width="1" height="1" fill="#000"/><rect x="8" y="17" width="1" height="1" fill="#000"/><rect x="11" y="17" width="1" height="1" fill="#000"/><rect x="16" y="17" width="1" height="1" fill="#000"/><rect x="17" y="17" width="1" height="1" fill="#000"/><rect x="19" y="17" width="1" height="1" fill="#000"/><rect x="9" y="18" width="1" height="1" fill="#000"/><rect x="10" y="18" width="1" height="1" fill="#000"/><rect x="13" y="18" width="1" height="1" fill="#000"/><rect x="14" y="18" width="1" height="1" fill="#000"/><rect x="15" y="18" width="1" height="1" fill="#000"/><rect x="18" y="18" width="1" height="1" fill="#000"/><rect x="9" y="19" width="1" height="1" fill="#000"/><rect x="11" y="19" width="1" height="1" fill="#000"/><rect x="12" y="19" width="1" height="1" fill="#000"/><rect x="17" y="19" width="1" height="1" fill="#000"/><rect x="20" y="19" width="1" height="1" fill="#000"/><rect x="8" y="20" width="1" height="1" fill="#000"/><rect x="9" y="20" width="1" height="1" fill="#000"/><rect x="10" y="20" width="1" height="1" fill="#000"/><rect x="12" y="20" width="1" height="1" fill="#000"/><rect x="13" y="20" width="1" height="1" fill="#000"/><rect x="14" y="20" width="1" height="1" fill="#000"/><rect x="16" y="20" width="1" height="1" fill="#000"/><rect x="17" y="20" width="1" height="1" fill="#000"/><rect x="20" y="20" width="1" height="1" fill="#000"/></svg></div>
+ <div class="two"><span class="btn sec" style="margin:0">Copiar clave</span><span class="btn" style="margin:0">Compartir enlace</span></div>
+ <p class="small" style="margin-top:10px">Para tenerlo en otro móvil o compartirlo: abre el enlace allí, escanea el QR con la cámara o escribe la clave en «Ya tengo una clave».</p>
+ <span class="btn red">Dejar de sincronizar en este móvil</span>
+</div></div>
+
+<div class="col"><h1>3 · En el otro móvil</h1>
+<p class="note">Al abrir el enlace (o escribir la clave), la app enseña qué jardín es. Si ese móvil ya tenía plantas, pregunta qué hacer con ellas.</p>
+<div class="sheet">
+ <div class="head"><b>Unirte a un jardín</b><span class="pill">Cancelar</span></div>
+ <div class="card"><b>Jardín con 3 plantas</b><div class="small" style="margin-top:2px">plumeria, parra, Limonero del patio · última actualización hoy</div></div>
+ <p>Este móvil ya tiene 2 plantas. ¿Qué hacemos con ellas?</p>
+ <div class="opt on"><b>Juntarlas con el jardín</b><span>Tus 2 plantas se añaden al jardín compartido.</span></div>
+ <div class="opt"><b>Usar solo el jardín compartido</b><span>Se quitan las de este móvil (antes se guarda una copia).</span></div>
+ <span class="btn">Unirme</span>
+</div></div>
+
+</div></body></html>

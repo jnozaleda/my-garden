@@ -604,3 +604,18 @@ dialog#sheet { touch-action: pan-y; }
 .tile-drip { position: absolute; top: 5px; right: 5px; z-index: 1; width: 22px; height: 22px; border-radius: 50%; background: rgba(0, 0, 0, 0.45); display: grid; place-items: center; color: #3fb8ac; }
 .tile-drip.off { color: #aeaeb2; }
 .tile-drip svg { width: 13px; height: 13px; }
+
+/* Sync */
+.sync-status { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--accent); }
+.sync-status .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.sync-status.warn { color: #c7771a; }
+.sync-key { font: 600 18px ui-monospace, Menlo, monospace; letter-spacing: 1px; text-align: center; background: var(--card); border-radius: 12px; padding: 12px; }
+.sync-qr { display: grid; place-items: center; margin: 12px auto; width: 168px; background: #fff; border-radius: 12px; padding: 6px; }
+.sync-qr:empty { display: none; }
+.sync-qr svg { width: 156px; height: 156px; display: block; }
+.two-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.danger-text { background: transparent !important; color: #ff6b5e !important; }
+.key-input { font-family: ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: 1px; }
+.join-opt { display: flex; gap: 10px; align-items: flex-start; background: var(--card); border-radius: 14px; padding: 12px; margin-top: 8px; }
+.join-opt span { display: flex; flex-direction: column; gap: 2px; }
+.join-opt small { color: var(--text-2); }
