@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duplicar y nombre</title>
+<style>
+:root{--bg:#000;--card:#1c1c1e;--hair:#38383a;--muted:#8e8e93;--green:#6cc47a;--lilac:#b69cff;--chip:#2c2c2e;--blue:#5aa9e6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font:15px -apple-system,system-ui,sans-serif;padding:20px 16px}
+.wrap{display:flex;gap:28px;flex-wrap:wrap}.col{flex:1;min-width:320px;max-width:380px}
+h1{font-size:15px;color:var(--muted);font-weight:600;margin:0 0 6px}.note{color:var(--muted);font-size:13.5px;line-height:1.4;margin:0 0 14px;min-height:56px}
+.sheet{background:#111113;border-radius:22px;padding:16px}
+.card{background:var(--card);border-radius:18px;padding:12px 14px;margin-bottom:12px}
+.lbl{font-size:13px;color:var(--muted);font-weight:600;margin:10px 2px 6px}
+.input{background:var(--card);border-radius:12px;padding:12px 14px;font-size:16px}
+.input.ph{color:#636366}
+.hint{font-size:12.5px;color:var(--muted);margin:6px 2px 0;line-height:1.4}
+.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.head b{font-size:20px}
+.pill{background:var(--chip);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:600}
+.row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:.5px solid var(--hair)}.row:first-child{border-top:0}
+.thumb{width:48px;height:48px;border-radius:12px;background:#24382a;display:grid;place-items:center;color:var(--green);flex:none}
+.thumb.lemon{background:radial-gradient(circle at 40% 45%,#f4d23c 0 18%,transparent 19%),radial-gradient(circle at 65% 60%,#e9c42c 0 14%,transparent 15%),linear-gradient(150deg,#3f7a3a,#1d3d1f)}
+.pn{font-weight:600}.sp{font-size:13px;color:var(--muted)}.st{font-size:13px;color:var(--muted);font-weight:600}
+svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.act{background:var(--chip);border-radius:14px;padding:10px 6px;text-align:center;font-size:12.5px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:5px}
+.act.hl{outline:2px solid var(--green)}
+.btn{display:block;text-align:center;background:var(--green);color:#000;font-weight:700;border-radius:12px;padding:12px;margin-top:12px}
+.dialog{background:#2c2c2e;border-radius:18px;padding:16px;margin-top:12px}
+.dialog b{display:block;font-size:16px;margin-bottom:4px}
+.check{display:flex;gap:8px;align-items:center;font-size:14px;color:#d1d1d6;margin-top:8px}.check span{width:20px;height:20px;border-radius:6px;background:var(--green);display:grid;place-items:center;color:#000;font-size:13px;font-weight:800}.check span.off{background:transparent;border:2px solid #636366}
+.ai{color:var(--lilac)}
+</style></head><body><div class="wrap">
+
+<div class="col"><h1>1 · Tipo de planta y nombre propio</h1>
+<p class="note">Lo que escribes en el alta es el tipo de planta (lo que usa la IA). En el paso 2 hay un campo opcional «Nombre» para distinguirla. Si lo dejas vacío, se ve el tipo como ahora.</p>
+<div class="sheet">
+ <div class="lbl">Tipo de planta</div>
+ <div class="input">limonero <span class="ai">✦</span></div>
+ <div class="hint">Citrus × limon · lo usa la IA para los cuidados.</div>
+ <div class="lbl">Nombre (opcional)</div>
+ <div class="input">Limonero del patio</div>
+ <div class="hint">Para distinguirla si tienes varias iguales: «Limonero grande», «El de la abuela»…</div>
+</div></div>
+
+<div class="col"><h1>2 · «Duplicar» en la ficha</h1>
+<p class="note">Nueva acción en la ficha. Copia el tipo, la especie, los cuidados, el calendario, la zona y el riego, sin gastar IA. No copia la foto, el historial ni las tareas hechas.</p>
+<div class="sheet">
+ <div class="head"><b>Limonero del patio</b><span class="pill">Editar</span></div>
+ <div class="actions">
+  <div class="act"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg>Regar</div>
+  <div class="act"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 9h4M10 3v6l-4 11a.7.7 0 0 0 .5 1h11a.7.7 0 0 0 .5-1l-4-11V3"/></svg>Abonar</div>
+  <div class="act hl"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Duplicar</div>
+ </div>
+ <div class="dialog">
+  <b>Duplicar limonero</b>
+  <div class="lbl" style="margin-top:8px">Nombre de la copia</div>
+  <div class="input">Limonero 2</div>
+  <div class="lbl">Zona</div>
+  <div class="input">Patio</div>
+  <div class="check"><span>✓</span>Mismos cuidados y calendario</div>
+  <div class="check"><span class="off"></span>Copiar también la foto</div>
+  <span class="btn">Crear copia</span>
+ </div>
+</div></div>
+
+<div class="col"><h1>3 · Cómo se ve en Plantas</h1>
+<p class="note">El nombre propio en grande y el tipo debajo. Si no tiene nombre propio, se ve como ahora (tipo + especie).</p>
+<div class="sheet"><div class="card">
+ <div class="row"><span class="thumb lemon"></span><div style="flex:1"><div class="pn">Limonero del patio</div><div class="sp">limonero · <i>Citrus × limon</i></div><div class="st">Regar en 2 días</div></div></div>
+ <div class="row"><span class="thumb"><svg viewBox="0 0 24 24"><path d="M12 21v-9M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg></span><div style="flex:1"><div class="pn">Limonero 2</div><div class="sp">limonero · <i>Citrus × limon</i></div><div class="st">Regar en 2 días</div></div></div>
+ <div class="row"><span class="thumb"><svg viewBox="0 0 24 24"><path d="M12 21v-9M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg></span><div style="flex:1"><div class="pn">Limonero de la abuela</div><div class="sp">limonero · <i>Citrus × limon</i></div><div class="st">Regar mañana</div></div></div>
+ <div class="row"><span class="thumb"><svg viewBox="0 0 24 24"><path d="M12 21v-9M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg></span><div style="flex:1"><div class="pn">plumeria</div><div class="sp"><i>Plumeria</i></div><div class="st">Regar en 4 días</div></div></div>
+</div>
+<div class="hint">En Hoy las tareas dirían «Regar Limonero 2», así sabes cuál es.</div>
+</div></div>
+
+</div></body></html>

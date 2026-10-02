@@ -3,7 +3,7 @@
 // season's interval. It's a snapshot: weather changes don't reach the calendar until the webcal
 // subscription (phase 2).
 
-import { CARE, SEASON_LABEL, nextDue, intervalFor, seasonOf, seasonStart, nextSeasonStart, addDays, irrigated } from "./rules.js?v=20261002q";
+import { CARE, SEASON_LABEL, nextDue, intervalFor, seasonOf, seasonStart, nextSeasonStart, addDays, irrigated, plantLabel } from "./rules.js?v=20261002r";
 
 const esc = (s) => String(s).replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
 const compact = (iso) => iso.replaceAll("-", "");
@@ -33,9 +33,9 @@ export function buildICS(plants, log, today, lat) {
           `DTSTART;VALUE=DATE:${compact(start)}`,
           `DTEND;VALUE=DATE:${compact(addDays(start, 1))}`,
           `RRULE:FREQ=DAILY;INTERVAL=${every};UNTIL=${compact(to)}`,
-          `SUMMARY:${esc(`${CARE[type].icon} ${CARE[type].label}: ${plant.name}`)}`,
+          `SUMMARY:${esc(`${CARE[type].icon} ${CARE[type].label}: ${plantLabel(plant)}`)}`,
           `DESCRIPTION:${esc(`${SEASON_LABEL[season]}: cada ${every} días${plant.zone ? ` · ${plant.zone}` : ""}. Mira Mi Jardín por si el tiempo cambia el plan.`)}`,
-          "BEGIN:VALARM", "ACTION:DISPLAY", "TRIGGER:PT9H", `DESCRIPTION:${esc(`${CARE[type].label} ${plant.name}`)}`, "END:VALARM",
+          "BEGIN:VALARM", "ACTION:DISPLAY", "TRIGGER:PT9H", `DESCRIPTION:${esc(`${CARE[type].label} ${plantLabel(plant)}`)}`, "END:VALARM",
           "END:VEVENT",
         );
       });

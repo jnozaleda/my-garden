@@ -45,7 +45,7 @@ export function monthTasks(plants, log, today) {
       out.push({ plant, i, task, window, done, ref });
     });
   }
-  return out.sort((a, b) => a.done - b.done || b.window.lastMonth - a.window.lastMonth || a.plant.name.localeCompare(b.plant.name));
+  return out.sort((a, b) => a.done - b.done || b.window.lastMonth - a.window.lastMonth || plantLabel(a.plant).localeCompare(plantLabel(b.plant)));
 }
 
 // Weather-driven checks for the week, beyond the alerts: rain spells (fungus, snails), cold
@@ -56,7 +56,7 @@ export function weatherChecks(plants, weather, today) {
   const recent = days.slice(Math.max(0, t - 2), t + 1);
   const week = days.slice(t, t + 7);
   const out = [];
-  const names = (list) => list.map((p) => p.name).join(", ").replace(/, ([^,]*)$/, " y $1");
+  const names = (list) => list.map(plantLabel).join(", ").replace(/, ([^,]*)$/, " y $1");
   const wet = recent.reduce((sum, d) => sum + d.rain, 0) >= 15 || recent.filter((d) => d.rain >= 2).length >= 2;
   if (wet) {
     const fungus = plants.filter((p) => p.rainReaches && p.risks?.includes("fungus"));
@@ -146,6 +146,9 @@ export function intervalFor(plant, type, season) {
 
 // Next due date for a recurring care type in today's season, or null if it doesn't apply now
 // (no interval, or feeding paused this season).
+// What the user calls the plant: its own name (nick, e.g. «Limonero del patio») or its type.
+export const plantLabel = (plant) => plant.nick || plant.name;
+
 // Automatic irrigation running for this plant: it has it (autoWater) and its zone hasn't paused it.
 export const irrigated = (plant) => Boolean(plant.autoWater && !plant.irrigationOff);
 
@@ -186,7 +189,7 @@ export function upcomingTasks(plants, log, today, lat, days = 7) {
       }
     }
   }
-  for (const d of out) d.items.sort((a, b) => a.type.localeCompare(b.type) || a.plant.name.localeCompare(b.plant.name));
+  for (const d of out) d.items.sort((a, b) => a.type.localeCompare(b.type) || plantLabel(a.plant).localeCompare(plantLabel(b.plant)));
   return out;
 }
 
@@ -230,7 +233,7 @@ export function dueTasks(plants, log, weather, today, lat, horizon = 2) {
       if (days <= horizon) tasks.push({ plant, type, due, days, advice });
     }
   }
-  return tasks.sort((a, b) => a.days - b.days || a.plant.name.localeCompare(b.plant.name));
+  return tasks.sort((a, b) => a.days - b.days || plantLabel(a.plant).localeCompare(plantLabel(b.plant)));
 }
 
 // Garden-wide alerts: frost, wind, heatwave. Each: { level: "warn"|"danger", icon, title, text }
@@ -238,7 +241,7 @@ export function weatherAlerts(plants, weather, today) {
   const o = outlook(weather);
   if (!o) return [];
   const alerts = [];
-  const names = (list) => list.map((p) => p.name).join(", ");
+  const names = (list) => list.map(plantLabel).join(", ");
   if (o.frost) {
     const sensitive = plants.filter((p) => p.frostSensitive);
     alerts.push({

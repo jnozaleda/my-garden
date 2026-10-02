@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alta · foto de la especie</title>
+<style>
+:root{--bg:#000;--card:#1c1c1e;--hair:#38383a;--muted:#8e8e93;--green:#6cc47a;--lilac:#b69cff;--chip:#2c2c2e}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font:15px -apple-system,system-ui,sans-serif;padding:20px 16px}
+.wrap{display:flex;gap:28px;flex-wrap:wrap}.col{flex:1;min-width:320px;max-width:380px}
+h1{font-size:15px;color:var(--muted);font-weight:600;margin:0 0 6px}.note{color:var(--muted);font-size:13.5px;line-height:1.4;margin:0 0 14px;min-height:56px}
+.sheet{background:#111113;border-radius:22px;padding:16px}
+.step{color:var(--muted);font-size:13px;font-weight:600;margin-bottom:6px}.title{font-size:22px;font-weight:800;margin-bottom:12px}
+.input{background:var(--card);border-radius:12px;padding:12px 14px;font-size:17px;margin-bottom:12px}
+.card{background:var(--card);border-radius:18px;padding:12px;margin-bottom:12px}
+.match{display:flex;gap:12px;align-items:center}
+.match img,.ph{width:84px;height:84px;border-radius:14px;object-fit:cover;flex:none;background:#24382a}
+.n{font-weight:700;font-size:16px}.sp{color:var(--muted);font-style:italic;font-size:14px}
+.ai{color:var(--lilac)}
+.credit{font-size:11px;color:#636366;margin-top:6px}
+.q{font-size:13.5px;color:#d1d1d6;margin:10px 0 8px}
+.alts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.alt{background:var(--chip);border-radius:14px;overflow:hidden;border:2px solid transparent}
+.alt.on{border-color:var(--green)}
+.alt img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+.alt div{padding:7px 9px}.alt b{font-size:14px;display:block}.alt i{font-size:12px;color:var(--muted)}
+.btn{display:block;text-align:center;background:var(--green);color:#000;font-weight:700;border-radius:12px;padding:12px;margin-top:12px}
+.btn.sec{background:var(--chip);color:#fff}
+.small{font-size:12.5px;color:var(--muted);line-height:1.4;margin-top:8px}
+.noimg{display:grid;place-items:center;color:var(--green);font-size:11px;text-align:center;padding:6px}
+</style></head><body><div class="wrap">
+
+<div class="col"><h1>A · Alta: la IA ha encontrado la planta</h1>
+<p class="note">Debajo del nombre aparece la foto de la especie que ha entendido la IA. Si no es la tuya, «No es esta» abre las alternativas.</p>
+<div class="sheet">
+ <div class="step">Paso 1 de 2</div><div class="title">¿Qué planta es?</div>
+ <div class="input">jazmín</div>
+ <div class="card"><div class="match">
+  <img src="https://inaturalist-open-data.s3.amazonaws.com/photos/185690403/medium.jpg" alt="Jasminum officinale">
+  <div><div class="n">Jazmín común <span class="ai">✦</span></div><div class="sp">Jasminum officinale</div><div class="credit">Foto: trala · iNaturalist (CC BY-NC)</div></div>
+ </div>
+ <div class="q">¿Es esta tu planta?</div>
+ <div class="alts" style="grid-template-columns:1fr 1fr"><span class="btn" style="margin:0">Sí, es esta</span><span class="btn sec" style="margin:0">No es esta</span></div>
+ </div>
+ <div class="small">La foto viene de iNaturalist (sin clave, gratis). Si no tiene, se busca en Wikipedia; si tampoco, no se muestra nada y todo sigue igual.</div>
+</div></div>
+
+<div class="col"><h1>B · «No es esta»: alternativas con foto</h1>
+<p class="note">Las alternativas que ya propone la IA, ahora como tarjetas con foto. Tocas la que es y la IA rellena la ficha de esa especie.</p>
+<div class="sheet">
+ <div class="step">Paso 1 de 2</div><div class="title">¿Cuál es la tuya?</div>
+ <div class="alts">
+  <div class="alt"><img src="https://inaturalist-open-data.s3.amazonaws.com/photos/185690403/medium.jpg" alt=""><div><b>Jazmín común</b><i>Jasminum officinale</i></div></div>
+  <div class="alt on"><img src="https://inaturalist-open-data.s3.amazonaws.com/photos/65041960/medium.jpeg" alt=""><div><b>Falso jazmín</b><i>Trachelospermum jasminoides</i></div></div>
+  <div class="alt"><div class="noimg" style="aspect-ratio:4/3;background:#24382a">Sin foto disponible</div><div><b>Jazmín de invierno</b><i>Jasminum nudiflorum</i></div></div>
+ </div>
+ <span class="btn">Usar falso jazmín</span>
+ <div class="small">Fotos: trala, 羅忠良 · iNaturalist (CC BY-NC). Se muestra el autor bajo cada foto, como pide la licencia.</div>
+</div></div>
+
+<div class="col"><h1>C · En la ficha (opcional)</h1>
+<p class="note">Si la planta no tiene foto tuya, la ficha usa la de la especie como referencia, marcada «Foto de referencia». En cuanto pones la tuya, se usa la tuya.</p>
+<div class="sheet">
+ <div class="card"><div class="match">
+  <img src="https://inaturalist-open-data.s3.amazonaws.com/photos/65041960/medium.jpeg" alt="">
+  <div><div class="n">falso jazmín</div><div class="sp">Trachelospermum jasminoides</div><div class="credit">Foto de referencia · iNaturalist</div></div>
+ </div></div>
+ <div class="small">En la cuadrícula de Plantas no se usaría: ahí solo tus fotos, para no confundir.</div>
+</div></div>
+
+</div></body></html>

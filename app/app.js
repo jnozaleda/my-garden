@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002q";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002r";
 import {
-  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated,
-} from "./rules.js?v=20261002q";
-import { buildICS } from "./calendar.js?v=20261002q";
+  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel,
+} from "./rules.js?v=20261002r";
+import { buildICS } from "./calendar.js?v=20261002r";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -120,17 +120,17 @@ function todayView() {
     <div class="t-row">
       <span class="t-ico ${t.type}">${ICONS[TASK_ICON[t.type]]}</span>
       <div class="body">
-        <div class="t-title">${CARE[t.type].label} ${esc(t.plant.name)}</div>
+        <div class="t-title">${CARE[t.type].label} ${esc(plantLabel(t.plant))}</div>
         ${t.type === "feed" && t.plant.feedTypes?.[seasonOf(today, here().lat)] ? `<div class="feed-type">${esc(t.plant.feedTypes[seasonOf(today, here().lat)])}</div>` : ""}
         <div class="t-when ${t.days < 0 ? "late" : ""}">${[t.days < 0 ? relDue(t.days) : "", t.plant.zone].filter(Boolean).map(esc).join(" · ") || "Hoy"}</div>
         ${t.advice ? `<div class="t-advice ${t.advice.kind}">${esc(t.advice.text)}${t.advice.kind === "skip" ? ` · <button type="button" class="link-inline" data-action="skip-rain" data-id="${t.plant.id}">Saltar</button>` : ""}</div>` : ""}
       </div>
-      <button type="button" class="t-check" data-action="log" data-type="${t.type}" data-id="${t.plant.id}" aria-label="Marcar como hecho: ${CARE[t.type].label} ${esc(t.plant.name)}">${ICONS.check}</button>
+      <button type="button" class="t-check" data-action="log" data-type="${t.type}" data-id="${t.plant.id}" aria-label="Marcar como hecho: ${CARE[t.type].label} ${esc(plantLabel(t.plant))}">${ICONS.check}</button>
     </div>`).join("");
   const upcoming = upcomingTasks(plants, log, today, here().lat, 7);
   const firstNext = upcoming.find((d) => d.items.length);
   const empty = `<div class="t-empty"><span class="badge">${ICONS.check}</span><div><b>Nada pendiente hoy</b><span>${firstNext
-    ? `Próxima tarea ${dayPhrase(firstNext.date, today)}: ${CARE[firstNext.items[0].type].label.toLowerCase()} ${esc(firstNext.items[0].plant.name)}`
+    ? `Próxima tarea ${dayPhrase(firstNext.date, today)}: ${CARE[firstNext.items[0].type].label.toLowerCase()} ${esc(plantLabel(firstNext.items[0].plant))}`
     : "Sin tareas en los próximos 7 días"}</span></div></div>`;
   html += tasks.length
     ? `<section class="card"><div class="sec">Para hoy <span class="meta">${tasks.length}</span></div>${rows}</section>`
@@ -227,7 +227,7 @@ function gardenWeekCard(today) {
     ${shown.map((x) => `<div class="yt-row ${x.done ? "done" : ""}">
       <button type="button" class="yt-box" data-action="task-toggle" data-refs="${x.members.map((m) => m.ref).join(",")}" aria-pressed="${x.done}" aria-label="${x.done ? "Desmarcar" : "Marcar como hecha"}: ${esc(x.title)}">${ICONS.check}</button>
       <div class="body"><b>${esc(x.title)}</b><div class="yt-how">${esc(x.how)}</div>
-        <div class="yt-meta">${x.members.map((m) => `<button type="button" class="yt-plant" data-action="open-plant" data-id="${m.plant.id}">${ICONS.sprout}${esc(m.plant.name)}</button>`).join("")}${x.members.length > 1 ? `<span class="yt-when">${x.members.length} plantas</span>` : ""}${x.done ? "" : windowLabel(x.window)}${x.done || x.members.length > 1 ? "" : skipBtn(x.members[0])}</div></div>
+        <div class="yt-meta">${x.members.map((m) => `<button type="button" class="yt-plant" data-action="open-plant" data-id="${m.plant.id}">${ICONS.sprout}${esc(plantLabel(m.plant))}</button>`).join("")}${x.members.length > 1 ? `<span class="yt-when">${x.members.length} plantas</span>` : ""}${x.done ? "" : windowLabel(x.window)}${x.done || x.members.length > 1 ? "" : skipBtn(x.members[0])}</div></div>
     </div>`).join("")}
     ${items.length > 5 ? `<button type="button" class="link-btn" data-action="toggle-week-tasks">${weekAll ? "Ver menos" : `Ver las ${items.length}`}</button>` : ""}
   </section>`;
@@ -279,9 +279,9 @@ function doneTodayCard(today) {
   if (!done.length) return "";
   const rows = done.map((e) => {
     const p = plantById(e.plantId);
-    const what = e.type === "water" && e.note === "Lluvia" ? `${esc(p?.name ?? "")} · saltado por lluvia`
-      : e.type === "task" ? `${esc(e.note)} · ${esc(p?.name ?? "")}`
-        : `${CARE[e.type]?.label ?? e.type} ${esc(p?.name ?? "")}`;
+    const what = e.type === "water" && e.note === "Lluvia" ? `${esc(p ? plantLabel(p) : "")} · saltado por lluvia`
+      : e.type === "task" ? `${esc(e.note)} · ${esc(p ? plantLabel(p) : "")}`
+        : `${CARE[e.type]?.label ?? e.type} ${esc(p ? plantLabel(p) : "")}`;
     return `<div class="done-row"><span class="tick">${ICONS.check}</span><s>${what}</s>${e.time ? `<span class="time">${e.time}</span>` : ""}<button type="button" class="undo" data-action="undo-log" data-log="${e.id}">Deshacer</button></div>`;
   }).join("");
   return `<section class="card done-card ${doneOpen ? "open" : ""}">
@@ -300,12 +300,12 @@ function upcomingCard(today, days) {
     const f = forecast[date];
     // Only the plants the rain reaches can skip their watering.
     const watering = items.filter((x) => x.type === "water");
-    const rainy = watering.filter((x) => x.plant.rainReaches).map((x) => x.plant.name);
+    const rainy = watering.filter((x) => x.plant.rainReaches).map((x) => plantLabel(x.plant));
     const note = f && rainy.length && f.rain >= 5 && f.rainProb >= 60
       ? `<span class="day-wx">${ICONS["cloud-rain"]}${Math.round(f.rain)} mm previstos: ${rainy.length === watering.length ? "probablemente no haga falta regar" : `${esc(rainy.join(", "))} quizá no necesite${rainy.length > 1 ? "n" : ""} riego`}</span>`
       : f && watering.length && f.max >= 32 ? `<span class="day-wx hot">${ICONS.flame}${Math.round(f.max)}°: riega temprano</span>` : "";
     return `<div class="day-row"><div class="day-name">${label(date)}<small>${fmtDate(date)}</small></div><div class="day-items">
-      ${items.map((x) => `<button type="button" class="day-chip ${x.type}" data-action="open-plant" data-id="${x.plant.id}">${ICONS[TASK_ICON[x.type]]}${esc(x.plant.name)}</button>`).join("")}
+      ${items.map((x) => `<button type="button" class="day-chip ${x.type}" data-action="open-plant" data-id="${x.plant.id}">${ICONS[TASK_ICON[x.type]]}${esc(plantLabel(x.plant))}</button>`).join("")}
       ${note}</div></div>`;
   }).join("");
   const gap = busy.length && busy[0].date !== days[0].date ? `<div class="day-gap">Sin tareas hasta ${dayPhrase(busy[0].date, today).replace(/^el /, "el ")}</div>` : "";
@@ -322,7 +322,7 @@ function photoTile(p, log, today) {
   const dot = n === null || n > 0 ? "" : `<span class="tile-dot ${n < 0 ? "late" : "today"}" aria-label="${n < 0 ? "Riego atrasado" : "Regar hoy"}"></span>`;
   return `<div class="tile-wrap">
     <button type="button" class="tile ${p.photo ? "" : "empty"}" data-action="open-plant" data-id="${p.id}">
-      ${p.photo ? `<img src="${p.photo}" alt="" />` : `<span class="tile-ico">${ICONS.sprout}</span>`}${dot}<span class="tile-name">${esc(p.name)}</span>
+      ${p.photo ? `<img src="${p.photo}" alt="" />` : `<span class="tile-ico">${ICONS.sprout}</span>`}${dot}<span class="tile-name">${esc(plantLabel(p))}</span>
     </button>
     ${p.photo ? "" : `<label class="tile-add">${ICONS.camera}Foto<input type="file" class="tile-photo" data-id="${p.id}" accept="image/*" hidden /></label>`}
   </div>`;
@@ -339,7 +339,7 @@ function plantsView() {
     <button type="button" role="radio" aria-checked="${grid}" aria-label="Cuadrícula" data-action="plants-view" data-view="grid">${ICONS.gridView}</button>
   </div>`;
   for (const zone of zones) {
-    const list = plants.filter((p) => (p.zone || "Sin zona") === zone).sort((a, b) => a.name.localeCompare(b.name, "es"));
+    const list = plants.filter((p) => (p.zone || "Sin zona") === zone).sort((a, b) => plantLabel(a).localeCompare(plantLabel(b), "es"));
     if (grid) {
       html += `<div class="zone-title">${esc(zone)} · ${list.length}</div><div class="p-grid">${list.map((p) => photoTile(p, log, today)).join("")}</div>`;
       continue;
@@ -354,7 +354,7 @@ function plantsView() {
         ? `<span class="p-status late">${ICONS.droplet}Regar · atrasado ${-n === 1 ? "1 día" : `${-n} días`}</span>`
         : n === 0 ? `<span class="p-status today">${ICONS.droplet}Regar hoy</span>`
           : `<span class="p-status">${ICONS.droplet}Regar ${n === 1 ? "mañana" : `en ${n} días`}</span>`;
-      return `<button class="p-row" data-action="open-plant" data-id="${p.id}">${thumb(p, "thumb p-thumb")}<div class="body"><div class="p-name">${esc(p.name)}</div>${p.species ? `<div class="p-sp">${esc(p.species)}</div>` : ""}${status}</div>${traits(p)}<span class="chev">${ICONS.chevron}</span></button>`;
+      return `<button class="p-row" data-action="open-plant" data-id="${p.id}">${thumb(p, "thumb p-thumb")}<div class="body"><div class="p-name">${esc(plantLabel(p))}</div>${p.nick ? `<div class="p-sp"><span class="p-type">${esc(p.name)}</span>${p.species ? ` · ${esc(p.species)}` : ""}</div>` : p.species ? `<div class="p-sp">${esc(p.species)}</div>` : ""}${status}</div>${traits(p)}<span class="chev">${ICONS.chevron}</span></button>`;
     }).join("") + `</section>`;
   }
   return html;
@@ -674,6 +674,7 @@ sheet.addEventListener("cancel", (e) => { if (!confirmDiscard()) e.preventDefaul
 function plantSheet(id) {
   const p = plantById(id);
   if (!p) return closeSheet();
+  ensureRefPhoto(p);
   const today = localToday();
   const log = state.data.log.filter((e) => e.plantId === id).sort((a, b) => b.date.localeCompare(a.date));
   const lat = here().lat;
@@ -720,9 +721,9 @@ function plantSheet(id) {
   ].filter(Boolean);
   const LOG_ICON = { water: "droplet", feed: "flask", prune: "scissors", treat: "bug", note: "notes", task: "check" };
   openSheet(`
-    <div class="sheet-head"><h2>${esc(p.name)}</h2><div class="row"><button class="btn small secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
-    ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : ""}
-    ${p.species || p.zone ? `<p class="muted">${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}</p>` : ""}
+    <div class="sheet-head"><h2>${esc(plantLabel(p))}</h2><div class="row"><button class="btn small secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
+    ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : p.refPhoto ? `<figure class="ref-photo"><img class="hero-photo" src="${esc(p.refPhoto.url)}" alt="" /><figcaption>Foto de referencia · ${esc(p.refPhoto.credit)}</figcaption></figure>` : ""}
+    ${p.species || p.zone || p.nick ? `<p class="muted">${p.nick ? `${esc(p.name)} · ` : ""}${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}</p>` : ""}
     <div class="traits">${traits.map(([icon, label]) => `<span class="trait">${ICONS[icon]}${label}</span>`).join("")}</div>
     ${nexts.length ? `<section class="card next-care"><div class="sec">${p.seasons ? `Ahora · ${SEASON_LABEL[season].toLowerCase()}` : "Ahora"}</div>${nexts.join("")}${p.tips?.[season] ? `<div class="n-tip">${ICONS[SEASON_ICON[season]]}<span>${esc(p.tips[season])} <span class="ai-mark">✦</span></span></div>` : ""}${nextLine}</section>` : ""}
     ${plantMonthCard(p, today)}
@@ -734,6 +735,7 @@ function plantSheet(id) {
     <section class="card"><div class="sec">Historial</div>${log.length ? `<ul class="log">${log.map((e) => `
       <li><span class="log-ico ${e.type}">${ICONS[LOG_ICON[e.type]] ?? ""}</span><span class="log-what">${esc(CARE[e.type]?.done ?? e.type)}${e.note ? ` — ${esc(e.note)}` : ""}</span><span class="d">${fmtDate(e.date)}</span>
       <button class="x" data-action="del-log" data-log="${e.id}" data-id="${p.id}" aria-label="Borrar">${ICONS.x}</button></li>`).join("")}</ul>` : `<p class="muted">Sin registros todavía.</p>`}</section>
+    <button type="button" class="btn block secondary" data-action="dup-plant" data-id="${p.id}">${ICONS.copy}Duplicar planta</button>
     ${provenance}
     `);
   sheet.dataset.plant = id;
@@ -751,7 +753,8 @@ function plantForm(id) {
       <section class="card ai-card edit-card ${p.ai ? "ai-halo done" : ""}" id="editCard">
         <label class="thumb-pick" aria-label="Cambiar foto"><span class="cam">${ICONS.camera}</span><span id="photoPreview">${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb placeholder">${ICONS.sprout}</span>`}</span><input type="file" id="photoInput" accept="image/*" hidden /></label>
         <div class="body">
-          <input name="name" class="name-input" required placeholder="Nombre de la planta" value="${esc(p.name)}" aria-label="Nombre" />
+          <input name="name" class="name-input" required placeholder="Tipo de planta" value="${esc(p.name)}" aria-label="Tipo de planta" />
+          <input name="nick" class="nick-input" placeholder="Nombre propio (opcional)" value="${esc(p.nick ?? "")}" aria-label="Nombre propio" />
           <input name="species" class="species-input" placeholder="Especie (opcional)" value="${esc(p.species)}" aria-label="Especie" />
           <span id="editAiLine">${p.ai ? `<span class="ai-pill">✦ ${p.ai.retro ? "Revisado con" : "Propuesto por"} la IA el ${fmtDate(p.ai.at)}</span>` : ""}</span>
         </div>
@@ -1103,6 +1106,7 @@ const ICONS = {
   calendar: svg('<path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M16 3v4M8 3v4M4 11h16"/>'),
   listView: svg('<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'),
   gridView: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
+  copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
   camera: svg('<path d="M5 7h1a2 2 0 0 0 2-2 1 1 0 0 1 1-1h6a1 1 0 0 1 1 1 2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/>'),
   bell: svg('<path d="M10 5a2 2 0 1 1 4 0 7 7 0 0 1 4 6v3a4 4 0 0 0 2 3H4a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>'),
   download: svg('<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5 5-5M12 4v12"/>'),
@@ -1136,6 +1140,75 @@ function newPlantWizard() {
   };
   wiz.autoWater = false;
   renderWizard();
+}
+
+// Reference photo of the species (iNaturalist, else Wikipedia), so the user can check the AI understood
+// the right plant; shown in the alta and, while the plant has no photo of its own, in its sheet.
+// Only freely licensed iNaturalist photos, credited. Cached per species on this device.
+const REF_CACHE = "mj_ref_photos";
+async function refPhoto(species) {
+  const key = String(species ?? "").trim();
+  if (!key) return null;
+  const cache = store.get(REF_CACHE, {});
+  if (key in cache) return cache[key];
+  let found = null;
+  try {
+    const r = await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(key)}&per_page=5`, { signal: AbortSignal.timeout(8000) }).then((x) => x.json());
+    const hit = (r.results ?? []).find((t) => t.default_photo?.license_code && t.default_photo.medium_url);
+    if (hit) found = { url: hit.default_photo.medium_url, credit: `${hit.default_photo.attribution.replace(/^\(c\)\s*/, "").replace(/,.*$/, "")} · iNaturalist`, source: "inaturalist" };
+  } catch {}
+  if (!found) {
+    for (const lang of ["es", "en"]) {
+      try {
+        const w = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(key.replace(/ /g, "_"))}`, { signal: AbortSignal.timeout(8000) }).then((x) => (x.ok ? x.json() : null));
+        if (w?.thumbnail?.source) { found = { url: w.thumbnail.source, credit: "Wikipedia", source: "wikipedia" }; break; }
+      } catch {}
+    }
+  }
+  store.set(REF_CACHE, { ...store.get(REF_CACHE, {}), [key]: found });
+  return found;
+}
+// Plants saved before this (or by hand) get their reference photo the first time their sheet opens.
+function ensureRefPhoto(p) {
+  if (p.photo || !p.species || p.refPhoto !== undefined) return;
+  p.refPhoto = null;
+  refPhoto(p.species).then((ph) => {
+    p.refPhoto = ph;
+    save();
+    if (ph && $("sheet").open && $("sheet").querySelector(`[data-action="edit-plant"][data-id="${p.id}"]`)) plantSheet(p.id);
+  });
+}
+// Alta, step 2: «¿Es esta tu planta?» with the species photo; «No es esta» shows the alternatives as photo cards.
+function speciesCheck() {
+  const ph = wiz.refPhoto;
+  const alts = wiz.care?.alternatives ?? [];
+  if (wiz.showAlts) {
+    return `<section class="card species-alts"><div class="sec">¿Cuál es la tuya?</div><div class="alt-grid">${alts.map((a, i) => {
+      const aph = wiz.altPhotos?.[i];
+      return `<button type="button" class="alt-card" data-action="wiz-alt" data-i="${i}">${aph ? `<img src="${esc(aph.url)}" alt="" />` : `<span class="alt-noimg">${aph === null ? "Sin foto" : `<span class="spinner" aria-hidden="true"></span>`}</span>`}<b>${esc(a.commonName)}</b><i>${esc(a.species)}</i></button>`;
+    }).join("")}</div>
+    <div class="row"><button type="button" class="link-btn" data-action="wiz-species-ok">Sí era la primera</button><button type="button" class="link-btn" data-action="wiz-back">Ninguna: cambiar el nombre</button></div></section>`;
+  }
+  if (ph === undefined || (ph === null && !alts.length)) return "";
+  return `<section class="card species-check">
+    ${ph ? `<img src="${esc(ph.url)}" alt="" /><div class="body"><b>${esc(wiz.care?.commonName || wiz.name)}</b><i>${esc(wiz.species)}</i><small>Foto: ${esc(ph.credit)}</small>` : `<div class="body"><b>${esc(wiz.species)}</b>`}
+    ${wiz.checked ? "" : `<div class="q-row"><span>¿Es esta tu planta?</span><button type="button" class="btn small" data-action="wiz-species-ok">Sí</button><button type="button" class="btn small secondary" data-action="wiz-species-no">No es esta</button></div>`}</div>
+  </section>`;
+}
+// «Duplicar planta»: same type, care, calendar, zone and irrigation, without spending the AI.
+function dupSheet(id) {
+  const p = plantById(id);
+  if (!p) return;
+  const same = state.data.plants.filter((x) => x.name === p.name).length;
+  openSheet(`
+    <div class="sheet-head"><h2>Duplicar ${esc(p.name)}</h2><button class="btn small secondary" data-action="open-plant" data-id="${p.id}">Cancelar</button></div>
+    <label class="seg-label" for="dupNick">Nombre de la copia</label>
+    <input id="dupNick" class="big-input" autocomplete="off" value="${esc(`${p.name.replace(/^./, (c) => c.toUpperCase())} ${same + 1}`)}" />
+    <label class="seg-label" for="dupZone">Zona</label>
+    <input id="dupZone" class="big-input" autocomplete="off" value="${esc(p.zone ?? "")}" />
+    <p class="muted small">Copia los cuidados, el calendario del año y el riego. No copia el historial.</p>
+    ${p.photo ? `<label class="switch-row"><span>${ICONS.camera}Copiar también la foto</span><input type="checkbox" role="switch" id="dupPhoto" class="switch-input" /><span class="switch" aria-hidden="true"></span></label>` : `<input type="checkbox" id="dupPhoto" hidden />`}
+    <div class="sheet-actions"><button class="btn block" data-action="dup-save" data-id="${p.id}">Crear copia</button></div>`);
 }
 
 function renderWizard() {
@@ -1180,7 +1253,9 @@ function renderWizard() {
       ${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb placeholder">${ICONS.sprout}</span>`}
       <div class="body"><div class="name">${esc(wiz.name)}</div>${aiLine}</div>
     </section>
-    ${wiz.ai === "done" ? altButtons(wiz.care?.alternatives, "wiz-alt") : ""}
+    ${wiz.ai === "done" ? speciesCheck() : ""}
+    <h3 class="q">Nombre propio <span class="muted small">(opcional)</span></h3>
+    <input id="wizNick" class="big-input" placeholder="Para distinguirla: «${esc(wiz.name)} del patio»…" autocomplete="off" value="${esc(wiz.nick ?? "")}" />
     ${wiz.care?.confidence === "baja" ? `<p class="ai-status warn">⚠️ La IA no está segura de qué planta es. Revisa los días o vuelve atrás y prueba con otro nombre.</p>` : ""}
     <h3 class="q">¿Dónde está?</h3>
     <div class="chips">
@@ -1238,6 +1313,9 @@ async function wizLookup() {
     current.notes = care.notes;
     current.tips = care.tips;
     current.feedTypes = care.feedTypes;
+    current.refPhoto = null;
+    current.checked = false;
+    refPhoto(care.species).then((ph) => { current.refPhoto = ph; if (wiz === current && $("wizStep2")) renderWizard(); });
 
   } catch (err) {
     current.ai = err.message === "not_plant" ? "notplant" : "error";
@@ -1253,7 +1331,7 @@ function wizSave() {
   track(wiz.ai === "done" ? "plant_add_ai" : "plant_add_manual");
   const zone = wiz.zone.trim();
   const plant = {
-    id: uid(), created: localToday(), name: wiz.name, species: wiz.species, zone,
+    id: uid(), created: localToday(), name: wiz.name, nick: ($("wizNick")?.value ?? wiz.nick ?? "").trim(), species: wiz.species, zone, refPhoto: wiz.refPhoto ?? undefined,
     seasons: wiz.seasons, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
     frostSensitive: wiz.frostSensitive, autoWater: wiz.autoWater, notes: wiz.notes, tips: wiz.tips, feedTypes: wiz.feedTypes, photo: draftPhoto,
   };
@@ -1298,7 +1376,28 @@ function addLog(plantId, type, note = "") {
 const actions = {
   "new-plant": newPlantWizard,
   "wiz-back": () => { wiz.step = 1; renderWizard(); },
-  "wiz-alt": (d) => { wiz.query = altQuery(wiz.care.alternatives[+d.i]); wizLookup(); },
+  "wiz-alt": (d) => { wiz.nick = $("wizNick")?.value ?? wiz.nick; wiz.query = altQuery(wiz.care.alternatives[+d.i]); wiz.showAlts = false; wizLookup(); },
+  "wiz-species-ok": () => { wiz.nick = $("wizNick")?.value ?? wiz.nick; wiz.checked = true; wiz.showAlts = false; renderWizard(); },
+  "wiz-species-no": () => {
+    wiz.nick = $("wizNick")?.value ?? wiz.nick;
+    if (!wiz.care?.alternatives?.length) return actions["wiz-back"]();
+    wiz.showAlts = true;
+    renderWizard();
+    wiz.care.alternatives.forEach((a, i) => refPhoto(a.species).then((ph) => { (wiz.altPhotos ??= {})[i] = ph; if ($("wizStep2")) renderWizard(); }));
+  },
+  "dup-plant": (d) => dupSheet(d.id),
+  "dup-save": (d) => {
+    const src = plantById(d.id);
+    if (!src) return;
+    const copy = structuredClone(src);
+    Object.assign(copy, { id: uid(), created: localToday(), nick: $("dupNick").value.trim(), zone: $("dupZone").value.trim() });
+    if (!$("dupPhoto").checked) delete copy.photo;
+    state.data.plants.push(copy);
+    track("plant_duplicate");
+    save();
+    render();
+    plantSheet(copy.id);
+  },
   "wiz-zone": (d) => { wiz.zone = d.zone; wiz.newZone = false; renderWizard(); },
   "wiz-new-zone": () => { wiz.newZone = true; wiz.zone = ""; renderWizard(); },
   "wiz-set": (d) => {
@@ -1354,7 +1453,7 @@ const actions = {
   "task-skip": (d) => {
     const p = plantById(d.id);
     const task = p?.yearTasks?.[+d.i];
-    if (!task || !confirm(`¿Quitar «${task.title}» de ${p.name}? No volverá a aparecer (puedes recuperarla en su ficha, en el calendario del año).`)) return;
+    if (!task || !confirm(`¿Quitar «${task.title}» de ${plantLabel(p)}? No volverá a aparecer (puedes recuperarla en su ficha, en el calendario del año).`)) return;
     task.off = true;
     p.skippedTasks = [...(p.skippedTasks ?? []), task.title];
     save();
@@ -1380,7 +1479,7 @@ const actions = {
   },
   "del-plant": (d) => {
     const p = plantById(d.id);
-    if (!confirm(`¿Eliminar «${p.name}» y todo su historial?`)) return;
+    if (!confirm(`¿Eliminar «${plantLabel(p)}» y todo su historial?`)) return;
     formDirty = false;
     state.data.plants = state.data.plants.filter((x) => x.id !== d.id);
     state.data.log = state.data.log.filter((e) => e.plantId !== d.id);
@@ -1430,6 +1529,7 @@ document.addEventListener("click", (e) => {
 });
 
 document.addEventListener("input", (e) => {
+  if (e.target.id === "wizNick" && wiz) wiz.nick = e.target.value;
   if (e.target.classList?.contains("autogrow")) autogrow(e.target);
   if (e.target.closest("#plantForm")) formDirty = true;
   e.target.closest(".st-cell")?.classList.remove("ai");
@@ -1493,6 +1593,7 @@ document.addEventListener("submit", (e) => {
   const id = e.target.dataset.id;
   const fields = {
     name: f.get("name").trim(),
+    nick: (f.get("nick") ?? "").trim(),
     species: f.get("species").trim(),
     zone: f.get("zone").trim(),
     seasons: readSeasonTable(f),
