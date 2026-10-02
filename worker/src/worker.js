@@ -140,7 +140,8 @@ const providers = {
   async gemini(env, messages, schema = CARE_SCHEMA) {
     if (!env.GEMINI_API_KEY) throw new Error("no GEMINI_API_KEY");
     const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent`, {
+    // "High demand" 503s are usually brief: one retry after 2 s before falling to the next provider.
+    const call = () => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY.trim() },
       body: JSON.stringify({
@@ -150,6 +151,8 @@ const providers = {
       }),
       signal: AbortSignal.timeout(60000),
     });
+    let res = await call();
+    if (res.status === 503) { await new Promise((r) => setTimeout(r, 2000)); res = await call(); }
     if (!res.ok) throw new Error(`gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
     const out = await res.json();
     const text = out?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
