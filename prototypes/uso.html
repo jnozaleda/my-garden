@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototipo · uso de la app</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" />
+<style>
+  :root { --bg: #f2f2f5; --card: #fff; --hair: rgba(0,0,0,.08); --text: #1d1d1f; --text2: #6e6e73; --text3: #a1a1a6; --track: rgba(0,0,0,.06);
+          --accent: #2f8f4e; --accent-soft: rgba(47,143,78,.12); --info: #2f6fd6; --warn: #c7771a; --danger: #c93b30; --ai: #7a56d6; --ai-soft: rgba(122,86,214,.12); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1c1c1e; --hair: rgba(255,255,255,.1); --text: #f5f5f7; --text2: #98989d; --text3: #636366; --track: rgba(255,255,255,.1); --accent: #4cc26f; --accent-soft: rgba(76,194,111,.16); --ai: #b9a3ff; --ai-soft: rgba(178,140,255,.16); } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #8a8a8a; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif; color: var(--text); padding: 20px; font-variant-numeric: tabular-nums; }
+  @media (prefers-color-scheme: dark) { body { background: #1a1a1a; } }
+  .note { color: #fff; font-size: 14px; max-width: 780px; margin: 0 0 14px; line-height: 1.5; } .note b { font-weight: 600; }
+  .phones { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .label { color: #fff; font-size: 13px; margin: 0 0 6px 4px; }
+  .phone { width: 360px; background: var(--bg); border-radius: 32px; padding: 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .ti { line-height: 1; }
+  .head h1 { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -.8px; } .head .sub { font-size: 14px; color: var(--text2); margin-top: 2px; }
+  .group-title { font-size: 13px; font-weight: 600; color: var(--text2); margin: 6px 4px -4px; }
+  .card { background: var(--card); border: .5px solid var(--hair); border-radius: 20px; padding: 16px; }
+  .list { padding: 4px 16px; }
+  .l-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: .5px solid var(--hair); font-size: 15px; }
+  .l-row:first-child { border-top: 0; }
+  .l-ico { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-size: 17px; color: #fff; flex: none; }
+  .l-row .v { margin-left: auto; color: var(--text2); font-size: 14px; display: flex; align-items: center; gap: 4px; }
+  .badge { font-size: 11px; font-weight: 600; color: var(--text2); background: var(--track); border-radius: 999px; padding: 2px 8px; }
+  .s-head { display: flex; justify-content: space-between; align-items: center; } .s-head h2 { margin: 0; font-size: 22px; font-weight: 700; }
+  .b { border-radius: 10px; padding: 6px 12px; font-size: 14px; font-weight: 600; background: var(--track); }
+  .grabber { width: 38px; height: 5px; border-radius: 3px; background: var(--text3); opacity: .5; margin: -8px auto 0; }
+  .sec { font-size: 15px; font-weight: 600; margin: 0 0 12px; display: flex; justify-content: space-between; align-items: baseline; }
+  .meta { font-size: 13px; font-weight: 500; color: var(--text2); }
+  .muted { color: var(--text2); font-size: 13px; line-height: 1.45; }
+  /* Stat tiles */
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tile { background: var(--bg); border-radius: 12px; padding: 10px; }
+  .tile span { display: block; font-size: 12px; color: var(--text2); } .tile b { font-size: 24px; font-weight: 600; }
+  /* Bar chart (single series: no legend, the title names it) */
+  .chart { position: relative; height: 120px; display: flex; align-items: flex-end; gap: 2px; border-bottom: .5px solid var(--hair); }
+  .bar { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; cursor: pointer; }
+  .bar.zero { background: var(--track); }
+  .bar:hover, .bar:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+  .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .grid { position: absolute; left: 0; right: 0; border-top: .5px dashed var(--hair); font-size: 10px; color: var(--text3); }
+  .grid span { position: absolute; right: 0; top: -13px; }
+  .tip { position: absolute; pointer-events: none; background: var(--text); color: var(--bg); font-size: 12px; padding: 5px 8px; border-radius: 8px; white-space: nowrap; transform: translate(-50%, -110%); opacity: 0; transition: opacity .1s; }
+  /* Action rows */
+  .a-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: .5px solid var(--hair); font-size: 14px; }
+  .a-row:first-of-type { border-top: 0; padding-top: 0; }
+  .a-row .ti { font-size: 18px; color: var(--text2); width: 20px; text-align: center; }
+  .a-row .n { margin-left: auto; font-weight: 600; }
+  .a-row small { color: var(--text2); font-size: 12px; margin-left: 6px; font-weight: 400; }
+  .ai { color: var(--ai); }
+  .privacy { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--text2); line-height: 1.4; padding: 0 4px; }
+  .privacy .ti { font-size: 16px; margin-top: 1px; }
+</style>
+</head>
+<body>
+<p class="note"><b>Propuesta: uso de la app.</b> La fila «Uso de la app» solo aparece en Ajustes del móvil que tiene guardado el código de acceso (el tuyo). Datos de ejemplo de 30 días. Pasa el ratón por las barras para ver cada día.</p>
+<div class="phones">
+
+<div><p class="label">Ajustes (en tu móvil)</p>
+<div class="phone">
+  <div class="head"><h1>Ajustes</h1><div class="sub">Mi Jardín</div></div>
+  <div class="group-title">General</div>
+  <div class="card list">
+    <div class="l-row"><span class="l-ico" style="background:#3b82f6"><i class="ti ti-map-pin"></i></span>Ubicación<span class="v">Madrid<i class="ti ti-chevron-right"></i></span></div>
+    <div class="l-row"><span class="l-ico" style="background:#7a56d6"><i class="ti ti-sparkles"></i></span>Asistente IA<span class="v" style="color:var(--accent)">Activado<i class="ti ti-chevron-right" style="color:var(--text3)"></i></span></div>
+  </div>
+  <div class="group-title">Solo para ti</div>
+  <div class="card list">
+    <div class="l-row"><span class="l-ico" style="background:#2f8f4e"><i class="ti ti-chart-bar"></i></span>Uso de la app<span class="v">2 activos<i class="ti ti-chevron-right"></i></span></div>
+  </div>
+  <div class="privacy"><i class="ti ti-lock"></i>Solo aparece en el móvil con tu código de acceso. En los demás no se ve.</div>
+</div></div>
+
+<div><p class="label">«Uso de la app» (hoja)</p>
+<div class="phone">
+  <div class="grabber"></div>
+  <div class="s-head"><h2>Uso de la app</h2><span class="b">Cerrar</span></div>
+  <div class="card">
+    <div class="sec">Dispositivos activos</div>
+    <div class="tiles"><div class="tile"><span>Hoy</span><b>2</b></div><div class="tile"><span>7 días</span><b>2</b></div><div class="tile"><span>30 días</span><b>3</b></div></div>
+  </div>
+  <div class="card">
+    <div class="sec">Aperturas por día <span class="meta">últimos 30 días · 94</span></div>
+    <div class="chart" id="chart"><div class="grid" style="bottom:66%"><span>8</span></div><div class="grid" style="bottom:33%"><span>4</span></div><div class="tip" id="tip"></div></div>
+    <div class="axis"><span>3 sep</span><span>17 sep</span><span>hoy</span></div>
+  </div>
+  <div class="card">
+    <div class="sec">Qué se hace <span class="meta">30 días</span></div>
+    <div class="a-row"><i class="ti ti-plant-2"></i>Plantas añadidas<span class="n">7<small>5 con IA · 2 a mano</small></span></div>
+    <div class="a-row"><i class="ti ti-droplet"></i>Riegos marcados<span class="n">41<small>6 saltados por lluvia</small></span></div>
+    <div class="a-row"><i class="ti ti-flask"></i>Abonos marcados<span class="n">9</span></div>
+    <div class="a-row"><i class="ti ti-checkbox"></i>Tareas del checklist<span class="n">12</span></div>
+    <div class="a-row"><i class="ti ti-refresh"></i>Fichas actualizadas<span class="n">8</span></div>
+  </div>
+  <div class="card">
+    <div class="sec">Inteligencia artificial <span class="meta ai">✦ 30 días</span></div>
+    <div class="a-row"><i class="ti ti-sparkles"></i>Consultas<span class="n">34</span></div>
+    <div class="a-row"><i class="ti ti-database"></i>Desde la memoria (gratis)<span class="n">21<small>62 %</small></span></div>
+    <div class="a-row"><i class="ti ti-clock"></i>Tiempo medio de respuesta<span class="n">11 s</span></div>
+    <div class="a-row"><i class="ti ti-alert-triangle"></i>Errores<span class="n">2<small>1 «no es una planta»</small></span></div>
+  </div>
+  <div class="privacy"><i class="ti ti-shield-check"></i>Recuentos anónimos: sin nombres de plantas, notas, ubicación ni datos personales. Cada instalación cuenta como un dispositivo.</div>
+</div></div>
+
+</div>
+<script>
+  const data = [2,3,1,0,4,2,3,5,2,1,3,4,2,6,3,2,4,3,5,7,4,2,3,6,5,4,3,8,6,5];
+  const chart = document.getElementById("chart"), tip = document.getElementById("tip");
+  const max = 12, start = new Date("2026-09-03T12:00:00");
+  data.forEach((n, i) => {
+    const b = document.createElement("div");
+    b.className = "bar" + (n ? "" : " zero"); b.tabIndex = 0;
+    b.style.height = `${Math.max(2, (n / max) * 100)}%`;
+    const d = new Date(start); d.setDate(d.getDate() + i);
+    const label = `${d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" })} · ${n} ${n === 1 ? "apertura" : "aperturas"}`;
+    b.setAttribute("aria-label", label);
+    const show = () => { tip.textContent = label; tip.style.left = `${b.offsetLeft + b.offsetWidth / 2}px`; tip.style.top = `${b.offsetTop}px`; tip.style.opacity = 1; };
+    b.addEventListener("mouseenter", show); b.addEventListener("focus", show);
+    b.addEventListener("mouseleave", () => (tip.style.opacity = 0)); b.addEventListener("blur", () => (tip.style.opacity = 0));
+    chart.appendChild(b);
+  });
+</script>
+</body>
+</html>
