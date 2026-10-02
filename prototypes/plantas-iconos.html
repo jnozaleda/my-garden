@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plantas · iconos</title>
+<style>
+:root{--bg:#000;--card:#1c1c1e;--line:#2c2c2e;--text:#fff;--muted:#8e8e93;--green:#6cc47a;--ice:#7cc4f0;--water:#5aa9e6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px -apple-system,system-ui,sans-serif;padding:20px 16px}
+h1{font-size:15px;color:var(--muted);font-weight:600;margin:28px 0 10px;text-transform:none}h1:first-child{margin-top:0}
+.wrap{display:flex;gap:24px;flex-wrap:wrap}.col{flex:1;min-width:320px;max-width:400px}
+.row{display:flex;align-items:center;gap:14px;background:var(--card);border-radius:22px;padding:14px 16px;margin-bottom:10px}
+.ph{width:56px;height:56px;border-radius:14px;background:#24382a;display:grid;place-items:center;flex:none}
+.ph svg{width:22px;stroke:var(--green);fill:none;stroke-width:2;stroke-linecap:round}
+.mid{flex:1;min-width:0}.n{font-weight:700;font-size:17px}.s{color:var(--muted);font-style:italic;font-size:15px}
+.nx{color:var(--muted);font-size:15px;font-weight:600;margin-top:2px;display:flex;align-items:center;gap:5px}
+.chev{color:#48484a;font-size:22px}
+.ic{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.drop.on{fill:var(--water);stroke:var(--water)}.drop.off{stroke:#48484a}
+.snow{color:var(--ice)}
+.badges{display:flex;flex-direction:column;align-items:flex-end;gap:6px;color:var(--muted)}
+.drops{display:flex;gap:1px}
+.inline{display:inline-flex;gap:1px;margin-left:6px;vertical-align:-2px}
+.pill{display:inline-flex;align-items:center;gap:4px;background:#2c2c2e;border-radius:999px;padding:3px 8px;font-size:13px;color:#c7c7cc;font-weight:600}
+.legend{color:var(--muted);font-size:13px;margin-top:4px;display:flex;gap:14px;align-items:center}
+.note{color:var(--muted);font-size:14px;line-height:1.4;margin:4px 0 12px}
+</style></head><body>
+<div class="wrap" id="root"></div>
+<script>
+const P=[{n:"plumeria",s:"Plumeria",w:2,f:true},{n:"Aspidistra",s:"Aspidistra elatior",w:1,f:false},{n:"jazmin",s:"Jasminum officinale",w:3,f:true}];
+const leaf='<svg viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/><path d="M12 15c0-3-2-5.5-6-5.5 0 4 2 6 6 5.5z"/></svg>';
+const drop=(on)=>`<svg class="ic drop ${on?'on':'off'}" viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg>`;
+const drops=(w)=>[1,2,3].map(i=>drop(i<=w)).join("");
+const snow='<svg class="ic snow" viewBox="0 0 24 24"><path d="M12 2v20M3.3 7l17.4 10M3.3 17l17.4-10M9.5 3.5 12 6l2.5-2.5M9.5 20.5 12 18l2.5 2.5M3 10.5l3.3-1.5L5.5 5.8M21 13.5 17.7 15l.8 3.2M3 13.5 6.3 15l-.8 3.2M21 10.5 17.7 9l.8-3.2"/></svg>';
+const dropLine='<svg class="ic" viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg>';
+const base=(p,right,nx)=>`<div class="row"><div class="ph">${leaf}</div><div class="mid"><div class="n">${p.n}</div><div class="s">${p.s}</div><div class="nx">${nx??dropLine+' Regar en 4 días'}</div></div>${right}<span class="chev">›</span></div>`;
+const V=[
+ ["A · A la derecha, apilados","Gotas arriba, copo debajo. Lo más limpio: la línea de texto no cambia.",p=>base(p,`<div class="badges"><div class="drops">${drops(p.w)}</div>${p.f?snow:'<span style="height:15px"></span>'}</div>`)],
+ ["B · En la línea de riego","Las gotas sustituyen al icono de riego y el copo va al final. Todo en una línea.",p=>base(p,"",`<span class="drops">${drops(p.w)}</span> Regar en 4 días ${p.f?'<span style="margin-left:auto;display:flex">'+snow+'</span>':''}`)],
+ ["C · Pastillas","Más legible, algo más pesado visualmente.",p=>base(p,"",`${dropLine} Regar en 4 días`).replace('</div></div><span','</div><div style="margin-top:6px;display:flex;gap:6px"><span class="pill">'+drops(p.w)+'</span>'+(p.f?'<span class="pill">'+snow+' Helada</span>':'')+'</div></div><span')],
+];
+root.innerHTML=V.map(([t,d,f])=>`<div class="col"><h1>${t}</h1><p class="note">${d}</p>${P.map(f).join("")}<div class="legend"><span>${drop(1)}${drop(0)}${drop(0)} poco riego</span><span>${drops(3)} mucho</span><span>${snow} sensible a heladas</span></div></div>`).join("");
+</script></body></html>

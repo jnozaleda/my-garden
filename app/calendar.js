@@ -3,7 +3,7 @@
 // season's interval. It's a snapshot: weather changes don't reach the calendar until the webcal
 // subscription (phase 2).
 
-import { CARE, SEASON_LABEL, nextDue, intervalFor, seasonOf, seasonStart, nextSeasonStart, addDays } from "./rules.js?v=20261002j";
+import { CARE, SEASON_LABEL, nextDue, intervalFor, seasonOf, seasonStart, nextSeasonStart, addDays } from "./rules.js?v=20261002k";
 
 const esc = (s) => String(s).replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
 const compact = (iso) => iso.replaceAll("-", "");

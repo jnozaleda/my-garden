@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002j";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002k";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002j";
-import { buildICS } from "./calendar.js?v=20261002j";
+} from "./rules.js?v=20261002k";
+import { buildICS } from "./calendar.js?v=20261002k";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -85,6 +85,16 @@ function forecastCard(alerts = []) {
 // ---------- Views ----------
 function thumb(plant, cls = "thumb") {
   return plant.photo ? `<img class="${cls}" src="${plant.photo}" alt="" />` : `<span class="${cls} placeholder">${ICONS.sprout}</span>`;
+}
+
+// Discreet traits on the plant list: water need this season as 1–3 drops (≤3 days much, ≤7 medium,
+// more = little) and a snowflake for frost-sensitive plants.
+function traits(p) {
+  const every = intervalFor(p, "water", seasonOf(localToday(), here().lat));
+  const level = !every ? 0 : every <= 3 ? 3 : every <= 7 ? 2 : 1;
+  const drops = level ? `<span class="t-drops" aria-label="Riego ${["", "bajo", "medio", "alto"][level]}">${[1, 2, 3].map((i) => `<span class="${i <= level ? "on" : ""}">${ICONS.droplet}</span>`).join("")}</span>` : "";
+  const frost = p.frostSensitive ? `<span class="t-frost" aria-label="Sensible a heladas">${ICONS.snow}</span>` : "";
+  return drops || frost ? `<span class="traits">${drops}${frost}</span>` : "";
 }
 
 function emptyGarden() {
@@ -256,7 +266,7 @@ function plantsView() {
         ? `<span class="p-status late">${ICONS.droplet}Regar · atrasado ${-n === 1 ? "1 día" : `${-n} días`}</span>`
         : n === 0 ? `<span class="p-status today">${ICONS.droplet}Regar hoy</span>`
           : `<span class="p-status">${ICONS.droplet}Regar ${n === 1 ? "mañana" : `en ${n} días`}</span>`;
-      return `<button class="p-row" data-action="open-plant" data-id="${p.id}">${thumb(p, "thumb p-thumb")}<div class="body"><div class="p-name">${esc(p.name)}</div>${p.species ? `<div class="p-sp">${esc(p.species)}</div>` : ""}${status}</div><span class="chev">${ICONS.chevron}</span></button>`;
+      return `<button class="p-row" data-action="open-plant" data-id="${p.id}">${thumb(p, "thumb p-thumb")}<div class="body"><div class="p-name">${esc(p.name)}</div>${p.species ? `<div class="p-sp">${esc(p.species)}</div>` : ""}${status}</div>${traits(p)}<span class="chev">${ICONS.chevron}</span></button>`;
     }).join("") + `</section>`;
   }
   return html;

@@ -428,6 +428,12 @@ h1#title { font-size: 32px; font-weight: 700; letter-spacing: -0.8px; }
 .p-row:first-child { border-top: 0; }
 .p-row .body { flex: 1; min-width: 0; }
 .p-thumb { width: 48px; height: 48px; border-radius: 14px; }
+.traits { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.traits svg { width: 14px; height: 14px; }
+.t-drops { display: flex; gap: 1px; color: var(--hairline); }
+.t-drops .on { color: #5aa9e6; }
+.t-drops .on svg { fill: currentColor; }
+.t-frost { color: #7cc4f0; display: flex; }
 .p-name { font-weight: 600; font-size: 15px; }
 .p-sp { font-size: 13px; color: var(--text-2); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p-status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; margin-top: 3px; color: var(--text-2); }
