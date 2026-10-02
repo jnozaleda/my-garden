@@ -538,3 +538,7 @@ dialog#sheet { touch-action: pan-y; }
 .u-row .icon { width: 18px; height: 18px; color: var(--text-2); flex: none; }
 .u-row span { flex: 1; }
 .u-row b { font-weight: 600; text-align: right; } .u-row small { display: block; font-size: 12px; font-weight: 400; color: var(--text-2); }
+
+/* Fertiliser type */
+.feed-type { display: block; font-size: 12px; color: var(--warn); font-weight: 600; margin-top: 2px; }
+.n-row .body > .feed-type { color: var(--warn); }

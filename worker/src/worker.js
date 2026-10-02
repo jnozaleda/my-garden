@@ -22,6 +22,7 @@ const CARE_SCHEMA = {
     ...Object.fromEntries(SEASONS.flatMap((k) => [
       [`water_${k}`, { type: "integer", minimum: 1, maximum: 60, description: `Días entre riegos en ${SEASON_ES[k]}, en exterior y maceta mediana, en ese clima` }],
       [`feed_${k}`, { type: "integer", minimum: 0, maximum: 365, description: `Días entre abonados en ${SEASON_ES[k]}; 0 si en esa estación no se abona` }],
+      [`feedtype_${k}`, { type: "string", description: `Qué tipo de abono usar en ${SEASON_ES[k]} para esta planta (p. ej. «Abono para cítricos, rico en nitrógeno», «Rico en potasio para la floración»); vacío si no se abona` }],
       [`tip_${k}`, { type: "string", description: `Una frase corta (menos de 140 caracteres) con lo más importante en ${SEASON_ES[k]} para esta planta en ese clima` }],
     ])),
     frostSensitive: { type: "boolean", description: "Si sufre con temperaturas bajo 0 °C" },
@@ -37,7 +38,7 @@ const CARE_SCHEMA = {
       },
     },
   },
-  required: ["isPlant", "alternatives", "commonName", "species", ...SEASONS.flatMap((k) => [`water_${k}`, `feed_${k}`, `tip_${k}`]), "frostSensitive", "notes", "confidence"],
+  required: ["isPlant", "alternatives", "commonName", "species", ...SEASONS.flatMap((k) => [`water_${k}`, `feed_${k}`, `feedtype_${k}`, `tip_${k}`]), "frostSensitive", "notes", "confidence"],
   additionalProperties: false,
 };
 
@@ -197,6 +198,8 @@ function sanitize(c) {
     species: str(c.species, 80),
     // { spring: { water, feed }, summer: …, autumn: …, winter: … }
     seasons: Object.fromEntries(SEASONS.map((k) => [k, { water: int(c[`water_${k}`], 1, 60, 3), feed: feedDays(int(c[`feed_${k}`], 0, 365, 0)) }])),
+    // Only meaningful where the season is fed.
+    feedTypes: Object.fromEntries(SEASONS.map((k) => [k, feedDays(int(c[`feed_${k}`], 0, 365, 0)) ? str(c[`feedtype_${k}`], 90) : ""])),
     tips: Object.fromEntries(SEASONS.map((k) => [k, clipSentences(str(c[`tip_${k}`], 400), 160)])),
     frostSensitive: c.frostSensitive === true || c.frostSensitive === "true",
     notes: clipSentences(str(c.notes, 2000), 600),
@@ -269,7 +272,7 @@ async function handleCare(request, env, headers, ctx) {
   const place = String(body.place ?? "").slice(0, 60);
 
   // Same plant, same climate cell (~100 km) → same answer, whatever the month.
-  const cacheKey = `care:v10:${env.PROVIDER}:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
+  const cacheKey = `care:v11:${env.PROVIDER}:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) { recordAi(env, ctx, "cached"); return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers); }
 

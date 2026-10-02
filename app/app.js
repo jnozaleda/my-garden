@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002i";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002j";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002i";
-import { buildICS } from "./calendar.js?v=20261002i";
+} from "./rules.js?v=20261002j";
+import { buildICS } from "./calendar.js?v=20261002j";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -105,6 +105,7 @@ function todayView() {
       <span class="t-ico ${t.type}">${ICONS[TASK_ICON[t.type]]}</span>
       <div class="body">
         <div class="t-title">${CARE[t.type].label} ${esc(t.plant.name)}</div>
+        ${t.type === "feed" && t.plant.feedTypes?.[seasonOf(today, here().lat)] ? `<div class="feed-type">${esc(t.plant.feedTypes[seasonOf(today, here().lat)])}</div>` : ""}
         <div class="t-when ${t.days < 0 ? "late" : ""}">${[t.days < 0 ? relDue(t.days) : "", t.plant.zone].filter(Boolean).map(esc).join(" · ") || "Hoy"}</div>
         ${t.advice ? `<div class="t-advice ${t.advice.kind}">${esc(t.advice.text)}${t.advice.kind === "skip" ? ` · <button type="button" class="link-inline" data-action="skip-rain" data-id="${t.plant.id}">Saltar</button>` : ""}</div>` : ""}
       </div>
@@ -397,13 +398,18 @@ const UPGRADES = [
     },
   },
   {
+    version: 5,
+    label: "tipo de abono según la estación",
+    apply: (plant, care) => { plant.feedTypes = care.feedTypes; },
+  },
+  {
     version: 4,
     label: "calendario de cuidados del año",
     source: "calendar",
     apply: (plant, cal) => { plant.yearTasks = cal.tasks ?? []; plant.risks = cal.risks ?? []; },
   },
 ];
-const CARE_VERSION = UPGRADES.at(-1).version;
+const CARE_VERSION = Math.max(...UPGRADES.map((u) => u.version));
 const hasSeasonalCare = (p) => Boolean(p.seasons) && new Set(SEASONS.map((k) => `${p.seasons[k].water}/${p.seasons[k].feed}`)).size > 1;
 // Plants from before versioning: a varied season table means version 1; a stored AI proposal, version 2.
 const careVersionOf = (p) => Math.max(p.careVersion ?? (hasSeasonalCare(p) ? 1 : 0), p.ai ? 2 : 0);
@@ -557,7 +563,8 @@ function plantSheet(id) {
     const ico = `<span class="t-ico ${type}">${ICONS[TASK_ICON[type]]}</span>`;
     if (due) {
       const n = daysBetween(today, due);
-      return `<div class="n-row">${ico}<div class="body"><b class="${n < 0 ? "late" : ""}">${CARE[type].label} ${relDue(n).toLowerCase()}</b><span>${fmtDate(due, { weekday: "long", day: "numeric", month: "short" }).replace(/^./, (c) => c.toUpperCase())}</span></div>` +
+      const kind = type === "feed" && p.feedTypes?.[season] ? `<span class="feed-type">${esc(p.feedTypes[season])} <span class="ai-mark">✦</span></span>` : "";
+      return `<div class="n-row">${ico}<div class="body"><b class="${n < 0 ? "late" : ""}">${CARE[type].label} ${relDue(n).toLowerCase()}</b><span>${fmtDate(due, { weekday: "long", day: "numeric", month: "short" }).replace(/^./, (c) => c.toUpperCase())}</span>${kind}</div>` +
         `<span class="tag">cada ${every} d${aiMark(isAiValue(p, `${season}.${type}`))}</span></div>`;
     }
     if (type === "feed" && p.seasons) {
@@ -910,6 +917,7 @@ async function aiFill(query) {
     form.dataset.aiNotes = care.notes;
     form.dataset.aiSnapshot = JSON.stringify(aiSnapshot(care));
     form.dataset.tips = JSON.stringify(care.tips ?? null);
+    form.dataset.feedTypes = JSON.stringify(care.feedTypes ?? null);
     $("tipsBox").innerHTML = tipsList(care.tips);
     form.dataset.alternatives = JSON.stringify(care.alternatives ?? []);
     formDirty = true;
@@ -1092,6 +1100,7 @@ async function wizLookup() {
     if (!current.touched.frostSensitive) current.frostSensitive = care.frostSensitive;
     current.notes = care.notes;
     current.tips = care.tips;
+    current.feedTypes = care.feedTypes;
 
   } catch (err) {
     current.ai = err.message === "not_plant" ? "notplant" : "error";
@@ -1109,7 +1118,7 @@ function wizSave() {
   const plant = {
     id: uid(), created: localToday(), name: wiz.name, species: wiz.species, zone,
     seasons: wiz.seasons, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
-    frostSensitive: wiz.frostSensitive, notes: wiz.notes, tips: wiz.tips, photo: draftPhoto,
+    frostSensitive: wiz.frostSensitive, notes: wiz.notes, tips: wiz.tips, feedTypes: wiz.feedTypes, photo: draftPhoto,
   };
   if (wiz.ai === "done" && wiz.care) plant.ai = aiSnapshot(wiz.care);
   // With the AI, the calendar (version 4) arrives in the background; by hand, nothing to fetch.
@@ -1328,6 +1337,7 @@ document.addEventListener("submit", (e) => {
   if (e.target.dataset.aiFilled) fields.careVersion = Math.max(3, Math.min(careVersionOf(plantById(id) ?? {}), CARE_VERSION));
   if (e.target.dataset.aiSnapshot) fields.ai = JSON.parse(e.target.dataset.aiSnapshot);
   if (e.target.dataset.tips && e.target.dataset.tips !== "null") fields.tips = JSON.parse(e.target.dataset.tips);
+  if (e.target.dataset.feedTypes && e.target.dataset.feedTypes !== "null") fields.feedTypes = JSON.parse(e.target.dataset.feedTypes);
   if (id) Object.assign(plantById(id), fields);
   else state.data.plants.push({ id: uid(), created: localToday(), ...fields });
   save();
@@ -1345,6 +1355,7 @@ const deviceId = store.get("mj_device", null) ?? (() => { const id = crypto.rand
 let eventQueue = store.get("mj_events", []);
 let flushTimer = null;
 function track(name) {
+  if (aiCode()) return; // Noza's own device (has the access code): not counted
   eventQueue.push(name);
   store.set("mj_events", eventQueue);
   clearTimeout(flushTimer);
