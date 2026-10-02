@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002c";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002d";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002c";
-import { buildICS } from "./calendar.js?v=20261002c";
+} from "./rules.js?v=20261002d";
+import { buildICS } from "./calendar.js?v=20261002d";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -252,6 +252,25 @@ const UPGRADES = [
     // `retro`: asked after the fact, so differences aren't necessarily the user's edits.
     apply: (plant, care) => { if (!plant.ai) plant.ai = { ...aiSnapshot(care), retro: true }; },
   },
+  {
+    version: 3,
+    label: "consejos por estación y notas para todo el año",
+    // Adds the four seasonal tips. The notes are renewed when they're the AI's or of unknown origin
+    // (plants from before provenance); notes the user rewrote are kept. Replaced notes go to the
+    // plant's history as a note, so nothing is lost.
+    apply: (plant, care) => {
+      plant.tips = care.tips;
+      const old = (plant.notes ?? "").trim();
+      const userWrote = plant.ai && !plant.ai.retro && !isAiValue(plant, "notes");
+      if (old && old !== care.notes && !userWrote) {
+        state.data.log.push({ id: uid(), plantId: plant.id, type: "note", date: localToday(), time: new Date().toTimeString().slice(0, 5), note: `Notas anteriores: ${old}` });
+      }
+      if (!old || !userWrote) {
+        plant.notes = care.notes;
+        if (plant.ai) plant.ai.values.notes = care.notes;
+      }
+    },
+  },
 ];
 const CARE_VERSION = UPGRADES.at(-1).version;
 const hasSeasonalCare = (p) => Boolean(p.seasons) && new Set(SEASONS.map((k) => `${p.seasons[k].water}/${p.seasons[k].feed}`)).size > 1;
@@ -341,7 +360,7 @@ function render() {
 const sheet = $("sheet");
 function openSheet(html, view = "") {
   sheet.dataset.view = view;
-  sheet.innerHTML = `<div class="sheet-in">${html}</div>`;
+  sheet.innerHTML = `<div class="grabber" aria-hidden="true"></div><div class="sheet-in">${html}</div>`;
   if (!sheet.open) sheet.showModal();
 }
 function closeSheet() { sheet.close(); }
@@ -358,6 +377,27 @@ function confirmDiscard() {
 }
 const leaveSheet = () => { if (confirmDiscard()) closeSheet(); };
 sheet.addEventListener("click", (e) => { if (e.target === sheet) leaveSheet(); });
+
+// Swipe down to close, as in iOS sheets: drag from the top of the sheet (or anywhere while it's
+// scrolled to the top). Past 90 px it leaves (asking first if there are unsaved changes).
+let drag = null;
+sheet.addEventListener("touchstart", (e) => {
+  if (sheet.scrollTop > 0 || e.target.closest("input, textarea, select")) return;
+  drag = { y0: e.touches[0].clientY, dy: 0 };
+}, { passive: true });
+sheet.addEventListener("touchmove", (e) => {
+  if (!drag) return;
+  drag.dy = Math.max(0, e.touches[0].clientY - drag.y0);
+  if (drag.dy > 0) { sheet.style.transition = "none"; sheet.style.transform = `translateY(${drag.dy}px)`; }
+}, { passive: true });
+sheet.addEventListener("touchend", () => {
+  if (!drag) return;
+  const far = drag.dy > 90;
+  drag = null;
+  sheet.style.transition = "transform 0.2s ease";
+  if (far && confirmDiscard()) { sheet.style.transform = "translateY(100%)"; setTimeout(() => { closeSheet(); sheet.style.transform = ""; }, 180); }
+  else sheet.style.transform = "";
+});
 sheet.addEventListener("cancel", (e) => { if (!confirmDiscard()) e.preventDefault(); }); // Esc / back gesture
 
 function plantSheet(id) {
@@ -408,7 +448,7 @@ function plantSheet(id) {
     ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : ""}
     ${p.species || p.zone ? `<p class="muted">${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}</p>` : ""}
     <div class="traits">${traits.map(([icon, label]) => `<span class="trait">${ICONS[icon]}${label}</span>`).join("")}</div>
-    ${nexts.length ? `<section class="card next-care"><div class="sec">${p.seasons ? `Ahora · ${SEASON_LABEL[season].toLowerCase()}` : "Ahora"}</div>${nexts.join("")}${nextLine}</section>` : ""}
+    ${nexts.length ? `<section class="card next-care"><div class="sec">${p.seasons ? `Ahora · ${SEASON_LABEL[season].toLowerCase()}` : "Ahora"}</div>${nexts.join("")}${p.tips?.[season] ? `<div class="n-tip">${ICONS[SEASON_ICON[season]]}<span>${esc(p.tips[season])} <span class="ai-mark">✦</span></span></div>` : ""}${nextLine}</section>` : ""}
     <section class="card"><div class="sec">Registrar</div><div class="acts">
       ${Object.entries(CARE).map(([type, c]) => `<button type="button" class="act" data-action="log" data-type="${type}" data-id="${p.id}" data-reopen="1">${ICONS[LOG_ICON[type]]}${c.done}</button>`).join("")}
     </div></section>
@@ -455,6 +495,7 @@ function plantForm(id) {
       <section class="card care-block">
         <h3>Cuidados${p.ai ? ` propuestos <span class="ai-mark">✦</span>` : ""}</h3>
         ${seasonTable(p.seasons ?? legacySeasons(p), { form: true, aiCells: aiCellsOf(p) })}
+        <div id="tipsBox">${tipsList(p.tips)}</div>
         <label class="field">Notas${aiMark(isAiValue(p, "notes"))}<textarea name="notes" class="autogrow" rows="6" placeholder="Comprada en marzo, le gusta el sol de mañana…">${esc(p.notes)}</textarea></label>
       </section>
       ${id ? `<button type="button" class="btn danger block delete-plant" data-action="del-plant" data-id="${id}">Eliminar planta</button>` : ""}
@@ -524,6 +565,15 @@ function fieldValue(plant, key) {
 const isAiValue = (plant, key) => Boolean(plant.ai) && key in plant.ai.values && plant.ai.values[key] === fieldValue(plant, key);
 const aiCellsOf = (plant) => new Set(ALL_CELLS.filter((c) => isAiValue(plant, c)));
 const aiMark = (on) => (on ? ` <span class="ai-mark" title="Propuesto por la IA">✦</span>` : "");
+
+// The four seasonal tips from the AI, today's season first.
+function tipsList(tips) {
+  if (!tips) return "";
+  const now = seasonOf(localToday(), here().lat);
+  const order = SEASONS.slice(SEASONS.indexOf(now)).concat(SEASONS.slice(0, SEASONS.indexOf(now)));
+  return `<div class="tips"><div class="tips-title">Consejos por estación <span class="ai-mark">✦</span></div>${order.filter((k) => tips[k]).map((k) =>
+    `<div class="tip ${k === now ? "now" : ""}">${ICONS[SEASON_ICON[k]]}<div><b>${SEASON_LABEL[k]}</b>${esc(tips[k])}</div></div>`).join("")}</div>`;
+}
 
 const legacySeasons = (p) => Object.fromEntries(SEASONS.map((k) => [k, { water: p.waterEvery || 3, feed: p.feedEvery || 0 }]));
 const readSeasonTable = (f) => Object.fromEntries(SEASONS.map((k) => [k, {
@@ -668,6 +718,8 @@ async function aiFill(query) {
     if (!f.notes.value.trim() || f.notes.value === form.dataset.aiNotes) f.notes.value = care.notes;
     form.dataset.aiNotes = care.notes;
     form.dataset.aiSnapshot = JSON.stringify(aiSnapshot(care));
+    form.dataset.tips = JSON.stringify(care.tips ?? null);
+    $("tipsBox").innerHTML = tipsList(care.tips);
     form.dataset.alternatives = JSON.stringify(care.alternatives ?? []);
     formDirty = true;
     form.dataset.aiFilled = "1";
@@ -806,6 +858,7 @@ function renderWizard() {
     <section class="card care-block">
       <h3>Cuidados${wiz.ai === "done" ? ` propuestos <span class="ai-mark">✦</span>` : ""}</h3>
       ${seasonTable(wiz.seasons, { busy, aiCells: wiz.ai === "done" ? new Set(ALL_CELLS.filter((c) => !wiz.touched[c])) : undefined })}
+      ${wiz.ai === "done" ? tipsList(wiz.tips) : ""}
       ${wiz.ai === "done" && wiz.notes ? `
       <div class="ai-notes ${wiz.notesOpen ? "open" : ""}">
         <p>${esc(wiz.notes)}</p>
@@ -842,6 +895,7 @@ async function wizLookup() {
     }
     if (!current.touched.frostSensitive) current.frostSensitive = care.frostSensitive;
     current.notes = care.notes;
+    current.tips = care.tips;
   } catch (err) {
     current.ai = err.message === "not_plant" ? "notplant" : "error";
     current.aiError = aiErrorText(err.message);
@@ -857,7 +911,7 @@ function wizSave() {
   const plant = {
     id: uid(), created: localToday(), name: wiz.name, species: wiz.species, zone,
     seasons: wiz.seasons, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
-    frostSensitive: wiz.frostSensitive, notes: wiz.notes, photo: draftPhoto,
+    frostSensitive: wiz.frostSensitive, notes: wiz.notes, tips: wiz.tips, photo: draftPhoto,
   };
   if (wiz.ai === "done" && wiz.care) plant.ai = aiSnapshot(wiz.care);
   plant.careVersion = CARE_VERSION;
@@ -1055,6 +1109,7 @@ document.addEventListener("submit", (e) => {
   withCurrentIntervals(fields);
   if (e.target.dataset.aiFilled) fields.careVersion = CARE_VERSION;
   if (e.target.dataset.aiSnapshot) fields.ai = JSON.parse(e.target.dataset.aiSnapshot);
+  if (e.target.dataset.tips && e.target.dataset.tips !== "null") fields.tips = JSON.parse(e.target.dataset.tips);
   if (id) Object.assign(plantById(id), fields);
   else state.data.plants.push({ id: uid(), created: localToday(), ...fields });
   save();
