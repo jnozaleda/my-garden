@@ -428,8 +428,8 @@ h1#title { font-size: 32px; font-weight: 700; letter-spacing: -0.8px; }
 .p-row:first-child { border-top: 0; }
 .p-row .body { flex: 1; min-width: 0; }
 .p-thumb { width: 48px; height: 48px; border-radius: 14px; }
-.traits { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
-.traits svg { width: 14px; height: 14px; }
+.p-traits { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.p-traits svg { width: 14px; height: 14px; }
 .t-drops { display: flex; gap: 1px; color: var(--hairline); }
 .t-drops .on { color: #5aa9e6; }
 .t-drops .on svg { fill: currentColor; }
@@ -598,3 +598,5 @@ dialog#sheet { touch-action: pan-y; }
 .alt-card b, .alt-card i { padding: 0 9px; }
 .alt-card b { margin-top: 6px; font-size: 14px; }
 .btn.block.secondary svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; }
+.btn.small.icon-btn { padding-left: 10px; padding-right: 10px; }
+.btn.small.icon-btn svg { width: 16px; height: 16px; display: block; }

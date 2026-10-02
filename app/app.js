@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002r";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002s";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel,
-} from "./rules.js?v=20261002r";
-import { buildICS } from "./calendar.js?v=20261002r";
+} from "./rules.js?v=20261002s";
+import { buildICS } from "./calendar.js?v=20261002s";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -90,7 +90,8 @@ function forecastCard(alerts = []) {
 
 // ---------- Views ----------
 function thumb(plant, cls = "thumb") {
-  return plant.photo ? `<img class="${cls}" src="${plant.photo}" alt="" />` : `<span class="${cls} placeholder">${ICONS.sprout}</span>`;
+  const src = plant.photo || plant.refPhoto?.url;
+  return src ? `<img class="${cls}" src="${esc(src)}" alt="" />` : `<span class="${cls} placeholder">${ICONS.sprout}</span>`;
 }
 
 // Discreet traits on the plant list: water need this season as 1–3 drops (≤3 days much, ≤7 medium,
@@ -100,7 +101,7 @@ function traits(p) {
   const level = !every ? 0 : every <= 3 ? 3 : every <= 7 ? 2 : 1;
   const drops = level ? `<span class="t-drops" aria-label="Riego ${["", "bajo", "medio", "alto"][level]}">${[1, 2, 3].map((i) => `<span class="${i <= level ? "on" : ""}">${ICONS.droplet}</span>`).join("")}</span>` : "";
   const frost = p.frostSensitive ? `<span class="t-frost" aria-label="Sensible a heladas">${ICONS.snow}</span>` : "";
-  return drops || frost ? `<span class="traits">${drops}${frost}</span>` : "";
+  return drops || frost ? `<span class="p-traits">${drops}${frost}</span>` : "";
 }
 
 function emptyGarden() {
@@ -321,8 +322,8 @@ function photoTile(p, log, today) {
   const n = due ? daysBetween(today, due) : null;
   const dot = n === null || n > 0 ? "" : `<span class="tile-dot ${n < 0 ? "late" : "today"}" aria-label="${n < 0 ? "Riego atrasado" : "Regar hoy"}"></span>`;
   return `<div class="tile-wrap">
-    <button type="button" class="tile ${p.photo ? "" : "empty"}" data-action="open-plant" data-id="${p.id}">
-      ${p.photo ? `<img src="${p.photo}" alt="" />` : `<span class="tile-ico">${ICONS.sprout}</span>`}${dot}<span class="tile-name">${esc(plantLabel(p))}</span>
+    <button type="button" class="tile ${p.photo || p.refPhoto ? "" : "empty"}" data-action="open-plant" data-id="${p.id}">
+      ${p.photo || p.refPhoto ? `<img src="${esc(p.photo || p.refPhoto.url)}" alt="" />` : `<span class="tile-ico">${ICONS.sprout}</span>`}${dot}<span class="tile-name">${esc(plantLabel(p))}</span>
     </button>
     ${p.photo ? "" : `<label class="tile-add">${ICONS.camera}Foto<input type="file" class="tile-photo" data-id="${p.id}" accept="image/*" hidden /></label>`}
   </div>`;
@@ -333,6 +334,7 @@ function plantsView() {
   if (!plants.length) return emptyGarden();
   const today = localToday();
   const zones = [...new Set(plants.map((p) => p.zone || "Sin zona"))].sort((a, b) => a.localeCompare(b, "es"));
+  plants.forEach(ensureRefPhoto);
   const grid = store.get("mj_plants_view", "list") === "grid";
   let html = `<div class="view-toggle" role="radiogroup" aria-label="Vista">
     <button type="button" role="radio" aria-checked="${!grid}" aria-label="Lista" data-action="plants-view" data-view="list">${ICONS.listView}</button>
@@ -721,7 +723,7 @@ function plantSheet(id) {
   ].filter(Boolean);
   const LOG_ICON = { water: "droplet", feed: "flask", prune: "scissors", treat: "bug", note: "notes", task: "check" };
   openSheet(`
-    <div class="sheet-head"><h2>${esc(plantLabel(p))}</h2><div class="row"><button class="btn small secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
+    <div class="sheet-head"><h2>${esc(plantLabel(p))}</h2><div class="row"><button class="btn small secondary icon-btn" data-action="dup-plant" data-id="${p.id}" aria-label="Duplicar planta" title="Duplicar">${ICONS.copy}</button><button class="btn small secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
     ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : p.refPhoto ? `<figure class="ref-photo"><img class="hero-photo" src="${esc(p.refPhoto.url)}" alt="" /><figcaption>Foto de referencia · ${esc(p.refPhoto.credit)}</figcaption></figure>` : ""}
     ${p.species || p.zone || p.nick ? `<p class="muted">${p.nick ? `${esc(p.name)} · ` : ""}${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}</p>` : ""}
     <div class="traits">${traits.map(([icon, label]) => `<span class="trait">${ICONS[icon]}${label}</span>`).join("")}</div>
@@ -735,7 +737,6 @@ function plantSheet(id) {
     <section class="card"><div class="sec">Historial</div>${log.length ? `<ul class="log">${log.map((e) => `
       <li><span class="log-ico ${e.type}">${ICONS[LOG_ICON[e.type]] ?? ""}</span><span class="log-what">${esc(CARE[e.type]?.done ?? e.type)}${e.note ? ` — ${esc(e.note)}` : ""}</span><span class="d">${fmtDate(e.date)}</span>
       <button class="x" data-action="del-log" data-log="${e.id}" data-id="${p.id}" aria-label="Borrar">${ICONS.x}</button></li>`).join("")}</ul>` : `<p class="muted">Sin registros todavía.</p>`}</section>
-    <button type="button" class="btn block secondary" data-action="dup-plant" data-id="${p.id}">${ICONS.copy}Duplicar planta</button>
     ${provenance}
     `);
   sheet.dataset.plant = id;
@@ -1175,7 +1176,9 @@ function ensureRefPhoto(p) {
   refPhoto(p.species).then((ph) => {
     p.refPhoto = ph;
     save();
-    if (ph && $("sheet").open && $("sheet").querySelector(`[data-action="edit-plant"][data-id="${p.id}"]`)) plantSheet(p.id);
+    if (!ph) return;
+    if ($("sheet").open && $("sheet").querySelector(`[data-action="edit-plant"][data-id="${p.id}"]`)) plantSheet(p.id);
+    else if (state.tab === "plants") render();
   });
 }
 // Alta, step 2: «¿Es esta tu planta?» with the species photo; «No es esta» shows the alternatives as photo cards.
