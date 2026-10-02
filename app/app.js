@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002b";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002c";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261002b";
-import { buildICS } from "./calendar.js?v=20261002b";
+} from "./rules.js?v=20261002c";
+import { buildICS } from "./calendar.js?v=20261002c";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -84,11 +84,11 @@ function forecastCard(alerts = []) {
 
 // ---------- Views ----------
 function thumb(plant, cls = "thumb") {
-  return plant.photo ? `<img class="${cls}" src="${plant.photo}" alt="" />` : `<span class="${cls}">🪴</span>`;
+  return plant.photo ? `<img class="${cls}" src="${plant.photo}" alt="" />` : `<span class="${cls} placeholder">${ICONS.sprout}</span>`;
 }
 
 function emptyGarden() {
-  return `<section class="card empty"><div class="big">🌱</div><p class="muted">Aún no tienes plantas. Añade la primera y te diremos cuándo regarla, abonarla y cuándo el tiempo cambia el plan.</p><button class="btn" data-action="new-plant">Añadir planta</button></section>`;
+  return `<section class="card empty"><div class="big">${ICONS.sprout}</div><p class="muted">Aún no tienes plantas. Añade la primera y te diremos cuándo regarla, abonarla y cuándo el tiempo cambia el plan.</p><button class="btn" data-action="new-plant">Añadir planta</button></section>`;
 }
 
 function todayView() {
@@ -174,10 +174,15 @@ function plantsView() {
   let html = "";
   for (const zone of zones) {
     const list = plants.filter((p) => (p.zone || "Sin zona") === zone).sort((a, b) => a.name.localeCompare(b.name, "es"));
-    html += `<div class="zone-title">${esc(zone)} · ${list.length}</div><section class="card">` + list.map((p) => {
+    html += `<div class="zone-title">${esc(zone)} · ${list.length}</div><section class="card list-card">` + list.map((p) => {
+      // Next watering, coloured: late (red), today (blue), later (grey).
       const due = nextDue(p, log, "water", today, here().lat);
-      const meta = [p.species, due ? `regar: ${relDue(daysBetween(today, due)).toLowerCase()}` : null].filter(Boolean).join(" · ");
-      return `<button class="plant" data-action="open-plant" data-id="${p.id}">${thumb(p)}<div class="body"><div class="name">${esc(p.name)}</div><div class="meta">${esc(meta)}</div></div><span class="muted">›</span></button>`;
+      const n = due ? daysBetween(today, due) : null;
+      const status = n === null ? "" : n < 0
+        ? `<span class="p-status late">${ICONS.droplet}Regar · atrasado ${-n === 1 ? "1 día" : `${-n} días`}</span>`
+        : n === 0 ? `<span class="p-status today">${ICONS.droplet}Regar hoy</span>`
+          : `<span class="p-status">${ICONS.droplet}Regar ${n === 1 ? "mañana" : `en ${n} días`}</span>`;
+      return `<button class="p-row" data-action="open-plant" data-id="${p.id}">${thumb(p, "thumb p-thumb")}<div class="body"><div class="p-name">${esc(p.name)}</div>${p.species ? `<div class="p-sp">${esc(p.species)}</div>` : ""}${status}</div><span class="chev">${ICONS.chevron}</span></button>`;
     }).join("") + `</section>`;
   }
   return html;
@@ -185,38 +190,50 @@ function plantsView() {
 
 function moreView() {
   const loc = state.loc ?? DEFAULT_LOC;
+  const aiOn = store.get("mj_ai_code", "") && codeStatus?.kind !== "warn";
+  const pending = pendingUpgrades().length;
   const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const row = (action, icon, color, label, value = "", chevron = true, disabled = false) =>
+    `<button type="button" class="l-row" data-action="${action}" ${disabled ? "disabled" : ""}><span class="l-ico" style="background:${color}">${ICONS[icon]}</span><span class="l-label">${label}</span><span class="l-value">${value}${chevron ? `<span class="chev">${ICONS.chevron}</span>` : ""}</span></button>`;
   return `
-    <section class="card"><h2>Ubicación</h2>
-      <p class="muted">La previsión y los avisos son para <strong>${esc(loc.name)}</strong>.</p>
-      <div class="row" style="margin-top:10px"><button class="btn small" data-action="locate">📍 Usar mi ubicación</button><button class="btn small secondary" data-action="open-place">Buscar ciudad</button></div>
+    <div class="group-title">General</div>
+    <section class="card list-card settings">
+      ${row("open-place", "pin", "#3b82f6", "Ubicación", esc(loc.name))}
+      ${row("open-ai", "sparkle", "#7a56d6", "Asistente IA", aiOn ? `<span class="ok">${ICONS.circleCheck}Activado</span>` : "Sin activar")}
+      ${pending || upgrade ? row("open-upgrades", "refresh", "#c7771a", "Fichas por actualizar", pending ? `<span class="dot"></span>${pending}` : "Al día") : ""}
     </section>
-    <section class="card"><h2>Asistente IA</h2>
-      <p class="muted">${store.get("mj_ai_code", "") && codeStatus?.kind !== "warn"
-        ? "Activado: al añadir una planta, pulsa ✨ Rellenar con IA y propondrá sus cuidados."
-        : "Escribe tu código de acceso para que ✨ Rellenar con IA proponga los cuidados de cada planta."}</p>
-      <form id="aiCodeForm" class="row" style="margin-top:10px">
-        <input type="text" name="code" class="code-input" placeholder="Código de acceso" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(store.get("mj_ai_code", ""))}" />
-        <button class="btn small" type="submit">Guardar</button>
-      </form>
-      ${codeStatus ? `<p class="ai-status ${codeStatus.kind}" style="margin-top:10px">${esc(codeStatus.text)}</p>` : ""}
+    <div class="group-title">Avisos y calendario</div>
+    <section class="card list-card settings">
+      ${row("noop", "bell", "#c93b30", "Aviso diario", "Próximamente", false)}
+      ${row("export-ics", "calendar", "#2f8f4e", "Exportar al calendario", "", true, !state.data.plants.length)}
     </section>
-    ${upgradesCard()}
-    <section class="card"><h2>Calendario</h2>
-      <p class="muted">Añade los riegos y abonados a tu calendario (Apple, Google u Outlook) como eventos que se repiten. Si cambias los intervalos o registras cuidados, vuelve a exportarlo.</p>
-      <div class="row" style="margin-top:10px"><button class="btn small" data-action="export-ics" ${state.data.plants.length ? "" : "disabled"}>📅 Exportar al calendario</button></div>
+    <p class="group-foot">${isStandalone ? "" : "Para recibir avisos en el iPhone, instala la app: Compartir → «Añadir a pantalla de inicio». "}Los riegos y abonados se añaden a tu calendario como eventos que se repiten por estación; si cambias algo, vuelve a exportarlo.</p>
+    <div class="group-title">Datos</div>
+    <section class="card list-card settings">
+      ${row("export-json", "download", "#6e6e73", "Exportar copia")}
+      ${row("import-json", "upload", "#6e6e73", "Importar copia")}
     </section>
-    <section class="card"><h2>Notificaciones</h2>
-      <p class="muted">${isStandalone
-        ? "El aviso diario de las 8:00 (heladas, lluvia, calor, viento y tareas) llega en la próxima fase."
-        : "Para recibir avisos en el iPhone, instala la app: pulsa Compartir → «Añadir a pantalla de inicio». El aviso diario llega en la próxima fase."}</p>
-    </section>
-    <section class="card"><h2>Copia de seguridad</h2>
-      <p class="muted">Tus plantas se guardan solo en este dispositivo. Exporta una copia de vez en cuando.</p>
-      <div class="row" style="margin-top:10px"><button class="btn small secondary" data-action="export-json">Exportar copia</button><button class="btn small secondary" data-action="import-json">Importar copia</button></div>
-      <input type="file" id="importFile" accept="application/json" hidden />
-    </section>`;
+    <p class="group-foot">Tus plantas se guardan solo en este móvil. Exporta una copia de vez en cuando.</p>
+    <input type="file" id="importFile" accept="application/json" hidden />`;
 }
+
+// Sheets opened from Ajustes. They redraw on render() while open (saving the code, upgrade progress).
+function aiSheet() {
+  openSheet(`
+    <div class="sheet-head"><h2>Asistente IA</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
+    <p class="muted">Al añadir una planta, la IA propone sola sus cuidados por estación para tu zona; también puedes pedírselo desde Editar. Necesita tu código de acceso.</p>
+    <form id="aiCodeForm" class="row">
+      <input type="text" name="code" class="code-input" placeholder="Código de acceso" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(store.get("mj_ai_code", ""))}" />
+      <button class="btn small" type="submit">Guardar</button>
+    </form>
+    ${codeStatus ? `<p class="ai-status ${codeStatus.kind}">${esc(codeStatus.text)}</p>` : ""}`, "ai");
+}
+function upgradesSheet() {
+  openSheet(`
+    <div class="sheet-head"><h2>Fichas por actualizar</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
+    ${upgradesCard() || `<p class="muted">Todas tus fichas están al día.</p>`}`, "upgrades");
+}
+const SHEET_VIEWS = { ai: aiSheet, upgrades: upgradesSheet };
 
 // ---------- Care sheet upgrades ----------
 // When an improvement needs new data from the AI, it gets a version and an entry here. Plants
@@ -261,7 +278,7 @@ function upgradeBanner() {
   if (upgrade && !upgrade.running && !upgrade.shownOnToday) return "";
   if (!upgrade && (!pending.length || dismissed)) return "";
   return `<section class="card upgrade-banner">
-    ${pending.length && !upgrade?.running ? `<p><strong>✨ ${pending.length === 1 ? "1 ficha tiene" : `${pending.length} fichas tienen`} mejoras nuevas</strong> <span class="muted">(${esc(upgradeLabels(pending).join(", "))})</span></p>
+    ${pending.length && !upgrade?.running ? `<p><strong><span class="ai-mark">✦</span> ${pending.length === 1 ? "1 ficha tiene" : `${pending.length} fichas tienen`} mejoras nuevas</strong> <span class="muted">(${esc(upgradeLabels(pending).join(", "))})</span></p>
     <div class="row"><button class="btn small" data-action="upgrade-plants">Actualizar</button><button class="btn small secondary" data-action="upgrade-later">Más tarde</button></div>` : ""}
     ${upgradeStatus()}
     ${upgrade && !upgrade.running ? `<div class="row"><button class="btn small secondary" data-action="upgrade-close">Cerrar</button></div>` : ""}
@@ -273,9 +290,9 @@ function upgradesCard() {
   if (!pending.length && !upgrade) return "";
   const labels = upgradeLabels(pending);
   const result = upgradeStatus();
-  return `<section class="card"><h2>Fichas por actualizar${pending.length ? ` · ${pending.length}` : ""}</h2>
+  return `<section class="card"><div class="sec">${pending.length ? `${pending.length === 1 ? "1 planta" : `${pending.length} plantas`}` : "Hecho"}</div>
     ${pending.length ? `<p class="muted">Hay mejoras que ${pending.length === 1 ? "esta planta aún no tiene" : "estas plantas aún no tienen"}: <strong>${esc(labels.join(", "))}</strong>. Pulsa una vez y la IA las completará. Lo que ya has puesto (nombre, zona, heladas y notas) no cambia.</p>
-    <div class="row" style="margin-top:10px"><button class="btn small" data-action="upgrade-plants" ${upgrade?.running ? "disabled" : ""}>✨ Actualizar fichas</button></div>` : ""}
+    <div class="row" style="margin-top:10px"><button class="btn small" data-action="upgrade-plants" ${upgrade?.running ? "disabled" : ""}>✦ Actualizar fichas</button></div>` : ""}
     ${result}</section>`;
 }
 
@@ -317,11 +334,13 @@ function render() {
   // Dot on Ajustes while some plant sheet has improvements to fetch.
   document.querySelector('.tabbar [data-tab="more"]').classList.toggle("has-dot", pendingUpgrades().length > 0);
   $("main").innerHTML = state.tab === "plants" ? plantsView() : state.tab === "more" ? moreView() : todayView();
+  if (sheet.open && SHEET_VIEWS[sheet.dataset.view]) SHEET_VIEWS[sheet.dataset.view]();
 }
 
 // ---------- Sheets ----------
 const sheet = $("sheet");
-function openSheet(html) {
+function openSheet(html, view = "") {
+  sheet.dataset.view = view;
   sheet.innerHTML = `<div class="sheet-in">${html}</div>`;
   if (!sheet.open) sheet.showModal();
 }
@@ -351,13 +370,15 @@ function plantSheet(id) {
   const nexts = ["water", "feed"].map((type) => {
     const every = intervalFor(p, type, season);
     const due = nextDue(p, state.data.log, type, today, lat);
+    const ico = `<span class="t-ico ${type}">${ICONS[TASK_ICON[type]]}</span>`;
     if (due) {
-      return `<div class="next-row"><span>${CARE[type].icon} ${CARE[type].label}: <strong>${relDue(daysBetween(today, due)).toLowerCase()}</strong> (${fmtDate(due)})</span>` +
-        `<span class="tag">${p.seasons ? `${SEASON_LABEL[season]} · ` : ""}cada ${every} d${aiMark(isAiValue(p, `${season}.${type}`))}</span></div>`;
+      const n = daysBetween(today, due);
+      return `<div class="n-row">${ico}<div class="body"><b class="${n < 0 ? "late" : ""}">${CARE[type].label} ${relDue(n).toLowerCase()}</b><span>${fmtDate(due, { weekday: "long", day: "numeric", month: "short" }).replace(/^./, (c) => c.toUpperCase())}</span></div>` +
+        `<span class="tag">cada ${every} d${aiMark(isAiValue(p, `${season}.${type}`))}</span></div>`;
     }
     if (type === "feed" && p.seasons) {
       const back = SEASONS.slice(SEASONS.indexOf(season) + 1).concat(SEASONS).find((k) => intervalFor(p, "feed", k));
-      return `<div class="next-row"><span>${CARE.feed.icon} Sin abonar en ${SEASON_LABEL[season].toLowerCase()}${aiMark(isAiValue(p, `${season}.feed`))}</span>${back ? `<span class="tag">Vuelve en ${SEASON_LABEL[back].toLowerCase()}</span>` : ""}</div>`;
+      return `<div class="n-row">${ico}<div class="body"><b>Sin abonar en ${SEASON_LABEL[season].toLowerCase()}${aiMark(isAiValue(p, `${season}.feed`))}</b>${back ? `<span>Vuelve en ${SEASON_LABEL[back].toLowerCase()}</span>` : ""}</div></div>`;
     }
     return null;
   }).filter(Boolean);
@@ -365,34 +386,37 @@ function plantSheet(id) {
   const changeOn = nextSeasonStart(today, lat);
   const nextSeason = seasonOf(changeOn, lat);
   const nextWater = intervalFor(p, "water", nextSeason);
-  if (p.seasons && nextWater !== intervalFor(p, "water", season)) {
-    nexts.push(`<p class="muted small next-change">El ${fmtDate(changeOn, { day: "numeric", month: "long" })} pasa a ${SEASON_LABEL[nextSeason].toLowerCase()}: regar cada ${nextWater} días.</p>`);
-  }
+  const nextLine = p.seasons && nextWater !== intervalFor(p, "water", season)
+    ? `<div class="n-next">${ICONS.calendar}El ${fmtDate(changeOn, { day: "numeric", month: "long" })} pasa a ${SEASON_LABEL[nextSeason].toLowerCase()}: regar cada ${nextWater} días</div>` : "";
+  let provenance = "";
   if (p.ai) {
     const changed = Object.keys(p.ai.values).filter((k) => !isAiValue(p, k)).length;
     const diff = p.ai.retro
       ? `${changed === 1 ? "1 dato distinto" : `${changed} datos distintos`} de su propuesta`
       : `${changed === 1 ? "1 dato cambiado" : `${changed} datos cambiados`} por ti`;
-    nexts.push(`<p class="muted small next-change"><span class="ai-mark">✦</span> ${p.ai.retro ? "Revisado con la IA" : "Propuesto por la IA"} el ${fmtDate(p.ai.at, { day: "numeric", month: "long" })}${changed ? ` · ${diff}` : ""}.</p>`);
+    provenance = `<p class="provenance"><span class="ai-mark">✦</span> ${p.ai.retro ? "Revisado con la IA" : "Propuesto por la IA"} el ${fmtDate(p.ai.at, { day: "numeric", month: "long" })}${changed ? ` · ${diff}` : ""}</p>`;
   }
-  if (missingUpgrades(p).length) nexts.push(`<p class="muted small next-change">Ficha por actualizar: Ajustes → ✨ Actualizar fichas.</p>`);
+  if (missingUpgrades(p).length) provenance += `<p class="provenance">Ficha por actualizar: Ajustes → Fichas por actualizar</p>`;
   const traits = [
-    p.inPot ? "En maceta" : "En suelo",
-    p.rainReaches ? "le llega la lluvia" : "a cubierto",
-    p.frostSensitive ? "sensible a heladas" : null,
-  ].filter(Boolean).join(" · ");
+    p.inPot ? ["pot", "Maceta"] : ["ground", "Suelo"],
+    p.rainReaches ? ["rain", "Le llega la lluvia"] : ["umbrella", "A cubierto"],
+    p.frostSensitive ? ["snow", "Sensible a heladas"] : null,
+  ].filter(Boolean);
+  const LOG_ICON = { water: "droplet", feed: "flask", prune: "scissors", treat: "bug", note: "notes" };
   openSheet(`
     <div class="sheet-head"><h2>${esc(p.name)}</h2><div class="row"><button class="btn small secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
     ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : ""}
-    <p class="muted">${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}${p.species || p.zone ? "<br>" : ""}${esc(traits)}</p>
-    ${nexts.length ? `<section class="card next-care">${nexts.join("")}</section>` : ""}
-    <section class="card"><h2>Registrar</h2><div class="chips">
-      ${Object.entries(CARE).map(([type, c]) => `<button class="chip" data-action="log" data-type="${type}" data-id="${p.id}" data-reopen="1">${c.icon} ${c.done}</button>`).join("")}
+    ${p.species || p.zone ? `<p class="muted">${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}</p>` : ""}
+    <div class="traits">${traits.map(([icon, label]) => `<span class="trait">${ICONS[icon]}${label}</span>`).join("")}</div>
+    ${nexts.length ? `<section class="card next-care"><div class="sec">${p.seasons ? `Ahora · ${SEASON_LABEL[season].toLowerCase()}` : "Ahora"}</div>${nexts.join("")}${nextLine}</section>` : ""}
+    <section class="card"><div class="sec">Registrar</div><div class="acts">
+      ${Object.entries(CARE).map(([type, c]) => `<button type="button" class="act" data-action="log" data-type="${type}" data-id="${p.id}" data-reopen="1">${ICONS[LOG_ICON[type]]}${c.done}</button>`).join("")}
     </div></section>
-    ${p.notes ? `<section class="card"><h2>Notas${aiMark(isAiValue(p, "notes"))}</h2><p class="muted">${esc(p.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
-    <section class="card"><h2>Historial</h2>${log.length ? `<ul class="log">${log.map((e) => `
-      <li><span class="d">${fmtDate(e.date)}</span><span>${CARE[e.type]?.icon ?? ""} ${esc(CARE[e.type]?.done ?? e.type)}${e.note ? ` — ${esc(e.note)}` : ""}</span>
-      <button class="x" data-action="del-log" data-log="${e.id}" data-id="${p.id}" aria-label="Borrar">✕</button></li>`).join("")}</ul>` : `<p class="muted">Sin registros todavía.</p>`}</section>
+    ${p.notes ? `<section class="card"><div class="sec start">Notas${aiMark(isAiValue(p, "notes"))}</div><p class="muted notes-text">${esc(p.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
+    <section class="card"><div class="sec">Historial</div>${log.length ? `<ul class="log">${log.map((e) => `
+      <li><span class="log-ico ${e.type}">${ICONS[LOG_ICON[e.type]] ?? ""}</span><span class="log-what">${esc(CARE[e.type]?.done ?? e.type)}${e.note ? ` — ${esc(e.note)}` : ""}</span><span class="d">${fmtDate(e.date)}</span>
+      <button class="x" data-action="del-log" data-log="${e.id}" data-id="${p.id}" aria-label="Borrar">${ICONS.x}</button></li>`).join("")}</ul>` : `<p class="muted">Sin registros todavía.</p>`}</section>
+    ${provenance}
     `);
 }
 
@@ -406,7 +430,7 @@ function plantForm(id) {
     <div class="sheet-head"><h2>${id ? "Editar planta" : "Nueva planta"}</h2><button class="btn small secondary" data-action="${id ? "open-plant" : "close"}" data-id="${id ?? ""}">Cancelar</button></div>
     <form id="plantForm" class="sheet-in" style="padding:0">
       <section class="card ai-card edit-card ${p.ai ? "ai-halo done" : ""}" id="editCard">
-        <label class="thumb-pick" aria-label="Cambiar foto"><span id="photoPreview">${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb">🪴</span>`}</span><input type="file" id="photoInput" accept="image/*" hidden /></label>
+        <label class="thumb-pick" aria-label="Cambiar foto"><span class="cam">${ICONS.camera}</span><span id="photoPreview">${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb placeholder">${ICONS.sprout}</span>`}</span><input type="file" id="photoInput" accept="image/*" hidden /></label>
         <div class="body">
           <input name="name" class="name-input" required placeholder="Nombre de la planta" value="${esc(p.name)}" aria-label="Nombre" />
           <input name="species" class="species-input" placeholder="Especie (opcional)" value="${esc(p.species)}" aria-label="Especie" />
@@ -685,6 +709,17 @@ const ICONS = {
   fog: svg('<path d="M5 5h3m4 0h9M3 10h11m4 0h1M5 15h5m4 0h7M3 20h9m4 0h3"/>'),
   wind: svg('<path d="M5 8h8.5a2.5 2.5 0 1 0-2.3-3.2M3 12h15.5a2.5 2.5 0 1 1-2.3 3.2M4 16h5.5a2.5 2.5 0 1 1-2.3 3.2"/>'),
   flame: svg('<path d="M12 11c2.3-3.3.2-7.8-1-9 0 3.4-2.2 5.3-3.7 6.7C5.9 10.1 5 12.3 5 14.3 5 18 8.1 21 12 21s7-3 7-6.7c0-1.7-1.2-4.4-2.3-5.6-2.1 3.4-3.3 3.4-4.7 2.3z"/>'),
+  chevron: svg('<path d="M9 6l6 6-6 6"/>'),
+  x: svg('<path d="M18 6L6 18M6 6l12 12"/>'),
+  scissors: svg('<circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.6 8.6L19 19M8.6 15.4L19 5"/>'),
+  bug: svg('<path d="M9 9V8a3 3 0 0 1 6 0v1"/><path d="M8 9h8a6 6 0 0 1 1 3v3a5 5 0 0 1-10 0v-3a6 6 0 0 1 1-3"/><path d="M3 13h4M17 13h4M12 20v-6M4 19l3.4-2M20 19l-3.4-2M4 7l3.8 2.8M20 7l-3.8 2.8"/>'),
+  notes: svg('<path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="M9 7h6M9 11h6M9 15h4"/>'),
+  calendar: svg('<path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M16 3v4M8 3v4M4 11h16"/>'),
+  camera: svg('<path d="M5 7h1a2 2 0 0 0 2-2 1 1 0 0 1 1-1h6a1 1 0 0 1 1 1 2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/>'),
+  bell: svg('<path d="M10 5a2 2 0 1 1 4 0 7 7 0 0 1 4 6v3a4 4 0 0 0 2 3H4a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>'),
+  download: svg('<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5 5-5M12 4v12"/>'),
+  upload: svg('<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 9l5-5 5 5M12 4v12"/>'),
+  refresh: svg('<path d="M20 11A8.1 8.1 0 0 0 4.5 9M4 5v4h4M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>'),
   alert: svg('<path d="M12 9v4M12 17h.01"/><path d="M10.4 3.9L2.6 17.5A1.8 1.8 0 0 0 4.1 20h15.8a1.8 1.8 0 0 0 1.5-2.5L13.6 3.9a1.8 1.8 0 0 0-3.2 0z"/>'),
   pot: svg('<path d="M5 10h14l-1.6 9.1a1 1 0 0 1-1 .9H7.6a1 1 0 0 1-1-.9z"/><path d="M12 10V6"/><path d="M12 6c0-2 1.5-3 3.5-3 0 2-1.5 3-3.5 3zM12 7.5C12 6 10.8 5 9 5c0 1.5 1.2 2.5 3 2.5z"/>'),
   ground: svg('<path d="M3 19h18M7 22h10"/><path d="M12 19v-8"/><path d="M12 11c0-3 2-5 5.5-5 0 3-2 5-5.5 5zM12 14c0-2.5-1.8-4-4.5-4 0 2.5 1.8 4 4.5 4z"/>'),
@@ -723,9 +758,9 @@ function renderWizard() {
       <form id="wizName" class="sheet-in" style="padding:0">
         <h3 class="q">¿Qué planta es?</h3>
         <input name="name" class="big-input" required placeholder="Olivo, limonero, geranio…" autocomplete="off" value="${esc(wiz.name)}" />
-        <div class="photo-pick"><span id="photoPreview">${draftPhoto ? `<img src="${draftPhoto}" alt="" />` : `<span class="thumb">📷</span>`}</span>
+        <div class="photo-pick"><span id="photoPreview">${draftPhoto ? `<img src="${draftPhoto}" alt="" />` : `<span class="thumb placeholder">${ICONS.camera}</span>`}</span>
           <label class="btn small secondary">Añadir foto<input type="file" id="photoInput" accept="image/*" hidden /></label></div>
-        <p class="muted">${hasCode ? "✨ Con el nombre, la IA propondrá sus cuidados para tu zona y este mes." : "Activa el asistente IA en Ajustes para que proponga los cuidados."}</p>
+        <p class="muted">${hasCode ? `<span class="ai-mark">✦</span> Con el nombre, la IA propondrá sus cuidados por estación para tu zona.` : "Activa el asistente IA en Ajustes para que proponga los cuidados."}</p>
         <button class="btn block" type="submit">Siguiente</button>
       </form>`);
     setTimeout(() => $("wizName")?.elements.name.focus(), 50);
@@ -752,7 +787,7 @@ function renderWizard() {
   openSheet(`
     ${head(`<button class="btn small secondary" data-action="wiz-back">Atrás</button>`)}
     <section class="card ai-card ${wiz.ai} ${wiz.ai === "loading" || wiz.ai === "done" ? "ai-halo" : ""}" id="wizStep2">
-      ${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb">🪴</span>`}
+      ${draftPhoto ? `<img class="thumb" src="${draftPhoto}" alt="" />` : `<span class="thumb placeholder">${ICONS.sprout}</span>`}
       <div class="body"><div class="name">${esc(wiz.name)}</div>${aiLine}</div>
     </section>
     ${wiz.ai === "done" ? altButtons(wiz.care?.alternatives, "wiz-alt") : ""}
@@ -845,8 +880,8 @@ async function saveCode(code) {
   try {
     const res = await fetch(`${API}/check`, { headers: { "X-Access-Code": code } });
     codeStatus = res.ok
-      ? { kind: "ok", text: "✅ Código correcto. Ya puedes usar ✨ Rellenar con IA." }
-      : { kind: "warn", text: "❌ Código incorrecto. Revisa que esté completo, sin espacios." };
+      ? { kind: "ok", text: "Código correcto. La IA ya puede proponer los cuidados de tus plantas." }
+      : { kind: "warn", text: "Código incorrecto. Revisa que esté completo, sin espacios." };
   } catch {
     codeStatus = { kind: "warn", text: "Guardado, pero no se ha podido comprobar: sin conexión." };
   }
@@ -877,6 +912,9 @@ const actions = {
   close: leaveSheet,
   "retry-weather": loadWeather,
   "open-place": placeSheet,
+  "open-ai": () => aiSheet(),
+  "open-upgrades": () => upgradesSheet(),
+  noop: () => {},
   log: (d) => {
     let note = "";
     if (d.type === "note" || d.type === "treat") {

@@ -318,7 +318,6 @@ label.switch-row { cursor: pointer; }
 .edit-card { align-items: center; }
 .thumb-pick { cursor: pointer; flex: none; position: relative; }
 .thumb-pick .thumb { width: 52px; height: 52px; }
-.thumb-pick::after { content: "📷"; position: absolute; right: -4px; bottom: -4px; font-size: 13px; background: var(--card); border-radius: 50%; padding: 1px 2px; }
 .name-input, .species-input { background: none; border: 0; border-bottom: 1px solid transparent; padding: 2px 0; width: 100%; color: var(--text); }
 .name-input { font-size: 17px; font-weight: 700; }
 .species-input { font-size: 14px; font-style: italic; color: var(--text-2); }
@@ -411,3 +410,66 @@ h1#title { font-size: 32px; font-weight: 700; letter-spacing: -0.8px; }
 .day-chip.feed { background: var(--bg); } .day-chip.feed .icon { color: var(--warn); }
 .day-wx { display: flex; align-items: center; gap: 4px; }
 .day-wx .icon { width: 14px; height: 14px; flex: none; }
+
+/* ---------- Clean Plantas, ficha y Ajustes (2026-10-02) ---------- */
+.card h2 { text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--text); }
+.sec.start { justify-content: flex-start; gap: 6px; }
+.thumb.placeholder { color: var(--accent); }
+.thumb.placeholder .icon { width: 55%; height: 55%; }
+.empty .big { color: var(--accent); } .empty .big .icon { width: 44px; height: 44px; }
+.thumb-pick .cam { position: absolute; right: -5px; bottom: -5px; z-index: 1; width: 22px; height: 22px; border-radius: 50%; background: var(--card); border: 0.5px solid var(--hairline); display: grid; place-items: center; color: var(--text-2); }
+.thumb-pick .cam .icon { width: 13px; height: 13px; }
+.chev { color: var(--text-3); display: grid; } .chev .icon { width: 18px; height: 18px; }
+
+/* Plantas */
+.zone-title { text-transform: none; font-size: 13px; font-weight: 600; color: var(--text-2); margin: 6px 4px -2px; }
+.list-card { padding: 4px 16px; }
+.p-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 0; border-top: 0.5px solid var(--hairline); }
+.p-row:first-child { border-top: 0; }
+.p-row .body { flex: 1; min-width: 0; }
+.p-thumb { width: 48px; height: 48px; border-radius: 14px; }
+.p-name { font-weight: 600; font-size: 15px; }
+.p-sp { font-size: 13px; color: var(--text-2); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; margin-top: 3px; color: var(--text-2); }
+.p-status .icon { width: 13px; height: 13px; }
+.p-status.today { color: var(--info); } .p-status.late { color: var(--danger); }
+
+/* Ficha */
+.traits { display: flex; flex-wrap: wrap; gap: 6px; }
+.trait { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; background: var(--card); border: 0.5px solid var(--hairline); border-radius: 999px; padding: 5px 10px; color: var(--text-2); }
+.trait .icon { width: 15px; height: 15px; }
+.next-care { gap: 0; }
+.n-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 0.5px solid var(--hairline); }
+.n-row:first-of-type { border-top: 0; padding-top: 0; }
+.n-row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.n-row b { font-weight: 600; font-size: 15px; } .n-row b.late { color: var(--danger); }
+.n-row .body span { font-size: 13px; color: var(--text-2); }
+.n-row .tag { margin-left: auto; }
+.n-next { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin-top: 10px; padding-top: 10px; border-top: 0.5px solid var(--hairline); }
+.n-next .icon { width: 15px; height: 15px; flex: none; }
+.acts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.act { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-2); padding: 9px 0; border-radius: 12px; background: var(--bg); }
+.act .icon { width: 21px; height: 21px; color: var(--text); }
+.act:active { background: var(--accent-soft); }
+.notes-text { font-size: 14px; line-height: 1.45; }
+.log li { align-items: center; }
+.log-ico { display: grid; } .log-ico .icon { width: 16px; height: 16px; }
+.log-ico.water { color: var(--info); } .log-ico.feed { color: var(--warn); } .log-ico.prune, .log-ico.treat, .log-ico.note { color: var(--text-2); }
+.log .log-what { flex: 1; min-width: 0; }
+.log .d { width: auto; color: var(--text-3); font-size: 13px; }
+.log .x { margin-left: 4px; display: grid; } .log .x .icon { width: 15px; height: 15px; }
+.provenance { text-align: center; font-size: 13px; color: var(--text-2); margin: 0; }
+
+/* Ajustes */
+.group-title { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 6px 4px -2px; }
+.group-foot { font-size: 12px; color: var(--text-2); margin: -2px 4px 4px; line-height: 1.4; }
+.l-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 11px 0; border-top: 0.5px solid var(--hairline); font-size: 15px; }
+.l-row:first-child { border-top: 0; }
+.l-row:disabled { opacity: 0.45; cursor: default; }
+.l-ico { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: #fff; flex: none; }
+.l-ico .icon { width: 17px; height: 17px; }
+.l-label { flex: 1; min-width: 0; }
+.l-value { display: flex; align-items: center; gap: 4px; color: var(--text-2); font-size: 14px; }
+.l-value .ok { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
+.l-value .ok .icon { width: 15px; height: 15px; }
+.l-value .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
