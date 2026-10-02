@@ -600,3 +600,7 @@ dialog#sheet { touch-action: pan-y; }
 .btn.block.secondary svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; }
 .btn.small.icon-btn { padding-left: 10px; padding-right: 10px; }
 .btn.small.icon-btn svg { width: 16px; height: 16px; display: block; }
+.p-status.auto.off { color: var(--text-2); display: flex; }
+.tile-drip { position: absolute; top: 5px; right: 5px; z-index: 1; width: 22px; height: 22px; border-radius: 50%; background: rgba(0, 0, 0, 0.45); display: grid; place-items: center; color: #3fb8ac; }
+.tile-drip.off { color: #aeaeb2; }
+.tile-drip svg { width: 13px; height: 13px; }

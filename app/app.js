@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002s";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002t";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel,
-} from "./rules.js?v=20261002s";
-import { buildICS } from "./calendar.js?v=20261002s";
+} from "./rules.js?v=20261002t";
+import { buildICS } from "./calendar.js?v=20261002t";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -323,7 +323,7 @@ function photoTile(p, log, today) {
   const dot = n === null || n > 0 ? "" : `<span class="tile-dot ${n < 0 ? "late" : "today"}" aria-label="${n < 0 ? "Riego atrasado" : "Regar hoy"}"></span>`;
   return `<div class="tile-wrap">
     <button type="button" class="tile ${p.photo || p.refPhoto ? "" : "empty"}" data-action="open-plant" data-id="${p.id}">
-      ${p.photo || p.refPhoto ? `<img src="${esc(p.photo || p.refPhoto.url)}" alt="" />` : `<span class="tile-ico">${ICONS.sprout}</span>`}${dot}<span class="tile-name">${esc(plantLabel(p))}</span>
+      ${p.photo || p.refPhoto ? `<img src="${esc(p.photo || p.refPhoto.url)}" alt="" />` : `<span class="tile-ico">${ICONS.sprout}</span>`}${dot}${p.autoWater ? `<span class="tile-drip ${irrigated(p) ? "" : "off"}" aria-label="${irrigated(p) ? "Riego automático" : "Riego pausado"}">${ICONS.drip}</span>` : ""}<span class="tile-name">${esc(plantLabel(p))}</span>
     </button>
     ${p.photo ? "" : `<label class="tile-add">${ICONS.camera}Foto<input type="file" class="tile-photo" data-id="${p.id}" accept="image/*" hidden /></label>`}
   </div>`;
@@ -356,7 +356,9 @@ function plantsView() {
         ? `<span class="p-status late">${ICONS.droplet}Regar · atrasado ${-n === 1 ? "1 día" : `${-n} días`}</span>`
         : n === 0 ? `<span class="p-status today">${ICONS.droplet}Regar hoy</span>`
           : `<span class="p-status">${ICONS.droplet}Regar ${n === 1 ? "mañana" : `en ${n} días`}</span>`;
-      return `<button class="p-row" data-action="open-plant" data-id="${p.id}">${thumb(p, "thumb p-thumb")}<div class="body"><div class="p-name">${esc(plantLabel(p))}</div>${p.nick ? `<div class="p-sp"><span class="p-type">${esc(p.name)}</span>${p.species ? ` · ${esc(p.species)}` : ""}</div>` : p.species ? `<div class="p-sp">${esc(p.species)}</div>` : ""}${status}</div>${traits(p)}<span class="chev">${ICONS.chevron}</span></button>`;
+      // Connected to irrigation but its zone has it paused: say so, so it doesn't look like a plain plant.
+      const pausedTag = p.autoWater && !irrigated(p) ? `<span class="p-status auto off">${ICONS.drip}Con riego · pausado</span>` : "";
+      return `<button class="p-row" data-action="open-plant" data-id="${p.id}">${thumb(p, "thumb p-thumb")}<div class="body"><div class="p-name">${esc(plantLabel(p))}</div>${p.nick ? `<div class="p-sp"><span class="p-type">${esc(p.name)}</span>${p.species ? ` · ${esc(p.species)}` : ""}</div>` : p.species ? `<div class="p-sp">${esc(p.species)}</div>` : ""}${status}${pausedTag}</div>${traits(p)}<span class="chev">${ICONS.chevron}</span></button>`;
     }).join("") + `</section>`;
   }
   return html;
