@@ -556,3 +556,24 @@ dialog#sheet { touch-action: pan-y; }
 .zone-auto svg { width: 13px; height: 13px; }
 .l-row.switch-row .switch { margin-left: auto; }
 .yt-skip { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--text-2); padding: 2px 0 2px 8px; }
+
+/* Plantas: list / grid toggle and photo grid */
+.view-toggle { display: flex; gap: 2px; margin: 0 0 -4px auto; width: max-content; background: var(--card); border-radius: 9px; padding: 2px; }
+.view-toggle button { width: 36px; height: 28px; display: grid; place-items: center; border-radius: 7px; color: var(--text-2); }
+.view-toggle button[aria-checked="true"] { background: var(--hairline); color: var(--text); }
+.view-toggle svg { width: 17px; height: 17px; }
+.p-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tile-wrap { position: relative; }
+.tile { position: relative; display: block; width: 100%; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: #24382a; }
+.tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tile::after { content: ""; position: absolute; inset: auto 0 0 0; height: 55%; background: linear-gradient(transparent, rgba(0, 0, 0, 0.72)); }
+.tile.empty::after { display: none; }
+.tile-ico { position: absolute; inset: 0 0 30% 0; display: grid; place-items: center; color: var(--accent); }
+.tile-ico svg { width: 28px; height: 28px; }
+.tile-name { position: absolute; left: 7px; right: 7px; bottom: 6px; z-index: 1; font-size: 12.5px; font-weight: 700; color: #fff; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.empty .tile-name { color: var(--text); }
+.tile-dot { position: absolute; top: 6px; left: 6px; z-index: 1; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); }
+.tile-dot.late { background: #ff6b5e; }
+.tile-dot.today { background: #5aa9e6; }
+.tile-add { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); color: var(--accent); font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.tile-add svg { width: 12px; height: 12px; }

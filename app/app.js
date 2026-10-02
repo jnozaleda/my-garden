@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002p";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002q";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated,
-} from "./rules.js?v=20261002p";
-import { buildICS } from "./calendar.js?v=20261002p";
+} from "./rules.js?v=20261002q";
+import { buildICS } from "./calendar.js?v=20261002q";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -314,14 +314,36 @@ function upcomingCard(today, days) {
     ${busy.length > 3 ? `<button type="button" class="link-btn" data-action="toggle-week">${weekOpen ? "Ver menos" : "Ver la semana"}</button>` : ""}</section>`;
 }
 
+// Grid view (optional, remembered): photo and name only; a dot shows watering late (red) or today
+// (blue). Without a photo, «Foto» picks one right there; the rest of the tile opens the plant.
+function photoTile(p, log, today) {
+  const due = irrigated(p) ? null : nextDue(p, log, "water", today, here().lat);
+  const n = due ? daysBetween(today, due) : null;
+  const dot = n === null || n > 0 ? "" : `<span class="tile-dot ${n < 0 ? "late" : "today"}" aria-label="${n < 0 ? "Riego atrasado" : "Regar hoy"}"></span>`;
+  return `<div class="tile-wrap">
+    <button type="button" class="tile ${p.photo ? "" : "empty"}" data-action="open-plant" data-id="${p.id}">
+      ${p.photo ? `<img src="${p.photo}" alt="" />` : `<span class="tile-ico">${ICONS.sprout}</span>`}${dot}<span class="tile-name">${esc(p.name)}</span>
+    </button>
+    ${p.photo ? "" : `<label class="tile-add">${ICONS.camera}Foto<input type="file" class="tile-photo" data-id="${p.id}" accept="image/*" hidden /></label>`}
+  </div>`;
+}
+
 function plantsView() {
   const { plants, log } = state.data;
   if (!plants.length) return emptyGarden();
   const today = localToday();
   const zones = [...new Set(plants.map((p) => p.zone || "Sin zona"))].sort((a, b) => a.localeCompare(b, "es"));
-  let html = "";
+  const grid = store.get("mj_plants_view", "list") === "grid";
+  let html = `<div class="view-toggle" role="radiogroup" aria-label="Vista">
+    <button type="button" role="radio" aria-checked="${!grid}" aria-label="Lista" data-action="plants-view" data-view="list">${ICONS.listView}</button>
+    <button type="button" role="radio" aria-checked="${grid}" aria-label="Cuadrícula" data-action="plants-view" data-view="grid">${ICONS.gridView}</button>
+  </div>`;
   for (const zone of zones) {
     const list = plants.filter((p) => (p.zone || "Sin zona") === zone).sort((a, b) => a.name.localeCompare(b.name, "es"));
+    if (grid) {
+      html += `<div class="zone-title">${esc(zone)} · ${list.length}</div><div class="p-grid">${list.map((p) => photoTile(p, log, today)).join("")}</div>`;
+      continue;
+    }
     const withIrrigation = list.some((p) => p.autoWater);
     const paused = pausedZones().includes(zone === "Sin zona" ? "" : zone);
     html += `<div class="zone-title">${esc(zone)} · ${list.length}${withIrrigation ? `<span class="zone-auto ${paused ? "off" : ""}">${ICONS.drip}${paused ? "Riego pausado" : "Riego encendido"}</span>` : ""}</div><section class="card list-card">` + list.map((p) => {
@@ -1079,6 +1101,8 @@ const ICONS = {
   bug: svg('<path d="M9 9V8a3 3 0 0 1 6 0v1"/><path d="M8 9h8a6 6 0 0 1 1 3v3a5 5 0 0 1-10 0v-3a6 6 0 0 1 1-3"/><path d="M3 13h4M17 13h4M12 20v-6M4 19l3.4-2M20 19l-3.4-2M4 7l3.8 2.8M20 7l-3.8 2.8"/>'),
   notes: svg('<path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="M9 7h6M9 11h6M9 15h4"/>'),
   calendar: svg('<path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M16 3v4M8 3v4M4 11h16"/>'),
+  listView: svg('<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'),
+  gridView: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
   camera: svg('<path d="M5 7h1a2 2 0 0 0 2-2 1 1 0 0 1 1-1h6a1 1 0 0 1 1 1 2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/>'),
   bell: svg('<path d="M10 5a2 2 0 1 1 4 0 7 7 0 0 1 4 6v3a4 4 0 0 0 2 3H4a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>'),
   download: svg('<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5 5-5M12 4v12"/>'),
@@ -1346,6 +1370,7 @@ const actions = {
     render();
     plantSheet(p.id);
   },
+  "plants-view": (d) => { store.set("mj_plants_view", d.view); render(); },
   "toggle-week-tasks": () => { weekAll = !weekAll; render(); },
   "toggle-done": () => { doneOpen = !doneOpen; render(); },
   "toggle-week": () => { weekOpen = !weekOpen; render(); },
@@ -1422,6 +1447,11 @@ document.addEventListener("change", async (e) => {
   if (e.target.id === "photoInput" && e.target.files[0]) {
     draftPhoto = await shrinkPhoto(e.target.files[0]).catch(() => null);
     if (draftPhoto) $("photoPreview").innerHTML = `<img class="thumb" src="${draftPhoto}" alt="" />`;
+  }
+  if (e.target.classList.contains("tile-photo") && e.target.files[0]) {
+    const p = plantById(e.target.dataset.id);
+    const photo = await shrinkPhoto(e.target.files[0]).catch(() => null);
+    if (p && photo) { p.photo = photo; save(); render(); }
   }
   if (e.target.id === "importFile" && e.target.files[0]) {
     try {
