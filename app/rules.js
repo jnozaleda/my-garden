@@ -76,6 +76,31 @@ export function nextDue(plant, log, type, today, lat) {
   return due;
 }
 
+// Care due on each of the next `days` days (tomorrow onwards), following each season's interval.
+// Something due today or overdue is assumed done today, so its next turn is counted from today.
+// Returns [{ date, items: [{ plant, type }] }], one entry per day, empty days included.
+export function upcomingTasks(plants, log, today, lat, days = 7) {
+  const out = Array.from({ length: days }, (_, i) => ({ date: addDays(today, i + 1), items: [] }));
+  const last = addDays(today, days);
+  for (const plant of plants) {
+    for (const type of ["water", "feed"]) {
+      let due = nextDue(plant, log, type, today, lat);
+      if (!due) continue;
+      if (due <= today) {
+        const every = intervalFor(plant, type, seasonOf(today, lat));
+        due = every ? addDays(today, every) : null;
+      }
+      for (let guard = 0; due && due <= last && guard < 60; guard++) {
+        out[daysBetween(today, due) - 1]?.items.push({ plant, type });
+        const every = intervalFor(plant, type, seasonOf(due, lat));
+        due = every ? addDays(due, every) : null;
+      }
+    }
+  }
+  for (const d of out) d.items.sort((a, b) => a.type.localeCompare(b.type) || a.plant.name.localeCompare(b.plant.name));
+  return out;
+}
+
 // Weather facts for the next few days, relative to today.
 function outlook(weather) {
   if (!weather) return null;

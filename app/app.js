@@ -1,11 +1,11 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261001i";
+import { fetchWeather, searchCities, weatherIcon } from "./weather.js?v=20261002a";
 import {
-  CARE, SEASONS, SEASON_LABEL, dueTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
-} from "./rules.js?v=20261001i";
-import { buildICS } from "./calendar.js?v=20261001i";
+  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart,
+} from "./rules.js?v=20261002a";
+import { buildICS } from "./calendar.js?v=20261002a";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -92,7 +92,8 @@ function todayView() {
   }
   if (!plants.length) return html + emptyGarden();
 
-  const tasks = dueTasks(plants, log, state.weather, today, here().lat);
+  // Para hoy: overdue and due today (tomorrow onwards lives in «Próximos días»).
+  const tasks = dueTasks(plants, log, state.weather, today, here().lat, 0);
   const rows = tasks.map((t) => `
     <div class="task">
       ${thumb(t.plant)}
@@ -105,8 +106,45 @@ function todayView() {
         ? `<button class="btn small secondary" data-action="skip-rain" data-id="${t.plant.id}">Saltar</button>`
         : `<button class="btn small" data-action="log" data-type="${t.type}" data-id="${t.plant.id}">Hecho</button>`}
     </div>`).join("");
-  html += `<section class="card"><h2>Tareas</h2>${rows || `<p class="muted">Nada pendiente para hoy ni mañana. 🌿</p>`}</section>`;
-  return html;
+  html += `<section class="card"><h2>Para hoy${tasks.length ? `<span class="count">${tasks.length}</span>` : ""}</h2>${rows || `<p class="muted all-done">🌿 Todo hecho por hoy</p>`}</section>`;
+  return html + doneTodayCard(today) + upcomingCard(today);
+}
+
+// «Hecho hoy»: what was logged today, folded into one line; each entry can be undone.
+let doneOpen = false;
+function doneTodayCard(today) {
+  const done = state.data.log.filter((e) => e.date === today && e.type !== "note").reverse();
+  if (!done.length) return "";
+  const rows = done.map((e) => {
+    const p = plantById(e.plantId);
+    const what = e.type === "water" && e.note === "Lluvia" ? `${CARE.water.icon} ${esc(p?.name ?? "")} · saltado por lluvia` : `${CARE[e.type]?.icon ?? ""} ${CARE[e.type]?.label ?? e.type} ${esc(p?.name ?? "")}`;
+    return `<div class="done-row"><span class="tick">✓</span><s>${what}</s>${e.time ? `<span class="time">${e.time}</span>` : ""}<button type="button" class="undo" data-action="undo-log" data-log="${e.id}">Deshacer</button></div>`;
+  }).join("");
+  return `<section class="card done-card ${doneOpen ? "open" : ""}">
+    <button type="button" class="fold" data-action="toggle-done" aria-expanded="${doneOpen}"><span>✅ Hecho hoy <span class="muted">· ${done.length}</span></span><span class="chev">›</span></button>
+    ${doneOpen ? `<div class="done-list">${rows}</div>` : ""}</section>`;
+}
+
+// «Próximos días»: the next 7 days, 3 at first; rain or heat in the forecast is noted on its day.
+let weekOpen = false;
+function upcomingCard(today) {
+  const days = upcomingTasks(state.data.plants, state.data.log, today, here().lat, 7);
+  const forecast = Object.fromEntries((state.weather?.days ?? []).map((d) => [d.date, d]));
+  const label = (iso, i) => i === 0 ? "Mañana" : fmtDate(iso, { weekday: "long" }).replace(/^./, (c) => c.toUpperCase());
+  const rows = days.slice(0, weekOpen ? 7 : 3).map(({ date, items }, i) => {
+    const f = forecast[date];
+    // Only the plants the rain reaches can skip their watering.
+    const rainy = items.filter((x) => x.type === "water" && x.plant.rainReaches).map((x) => x.plant.name);
+    const note = f && rainy.length && f.rain >= 5 && f.rainProb >= 60
+      ? `<span class="day-wx">🌧️ ${Math.round(f.rain)} mm previstos: ${rainy.length === items.filter((x) => x.type === "water").length ? "probablemente no haga falta regar" : `${esc(rainy.join(", "))} quizá no necesite${rainy.length > 1 ? "n" : ""} riego`}</span>`
+      : f && items.some((x) => x.type === "water") && f.max >= 32
+        ? `<span class="day-wx hot">🔥 ${Math.round(f.max)}°: riega temprano</span>` : "";
+    return `<div class="day-row"><div class="day-name">${label(date, i)}<small>${fmtDate(date)}</small></div><div class="day-items">
+      ${items.length ? items.map((x) => `<button type="button" class="day-chip ${x.type}" data-action="open-plant" data-id="${x.plant.id}">${CARE[x.type].icon} ${esc(x.plant.name)}</button>`).join("") : `<span class="muted small">Nada</span>`}
+      ${note}</div></div>`;
+  }).join("");
+  return `<section class="card"><h2>Próximos días</h2>${rows}
+    <button type="button" class="link-btn" data-action="toggle-week">${weekOpen ? "Ver menos" : "Ver la semana"}</button></section>`;
 }
 
 function plantsView() {
@@ -779,7 +817,7 @@ async function saveCode(code) {
 
 // ---------- Actions ----------
 function addLog(plantId, type, note = "") {
-  state.data.log.push({ id: uid(), plantId, type, date: localToday(), note });
+  state.data.log.push({ id: uid(), plantId, type, date: localToday(), time: new Date().toTimeString().slice(0, 5), note });
   save();
 }
 
@@ -812,6 +850,9 @@ const actions = {
     if (d.reopen) plantSheet(d.id);
   },
   "skip-rain": (d) => { addLog(d.id, "water", "Lluvia"); render(); },
+  "undo-log": (d) => { state.data.log = state.data.log.filter((e) => e.id !== d.log); save(); render(); },
+  "toggle-done": () => { doneOpen = !doneOpen; render(); },
+  "toggle-week": () => { weekOpen = !weekOpen; render(); },
   "del-log": (d) => {
     state.data.log = state.data.log.filter((e) => e.id !== d.log);
     save(); render(); plantSheet(d.id);

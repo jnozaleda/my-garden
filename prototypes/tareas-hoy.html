@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototipo · tareas en Hoy</title>
+<style>
+  :root { --bg: #f2f2f5; --card: #fff; --hair: rgba(0,0,0,.08); --text: #1d1d1f; --text2: #6e6e73; --text3: #a1a1a6; --track: rgba(0,0,0,.06);
+          --accent: #2f8f4e; --accent-soft: rgba(47,143,78,.12); --danger: #c93b30; --info: #2f6fd6; --info-soft: rgba(59,130,245,.12); --warn: #c7771a; --warn-soft: rgba(224,138,41,.14); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1c1c1e; --hair: rgba(255,255,255,.1); --text: #f5f5f7; --text2: #98989d; --text3: #636366; --track: rgba(255,255,255,.1); --accent: #4cc26f; --accent-soft: rgba(76,194,111,.16); --danger: #ff6b5e; --info: #6aa2ff; --warn: #f0a24a; } }
+  * { box-sizing: border-box; } body { margin: 0; background: #888; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif; padding: 20px; color: var(--text); }
+  @media (prefers-color-scheme: dark) { body { background: #111; } }
+  .intro { color: #fff; font-size: 14px; margin: 0 0 14px; max-width: 700px; } .intro b { font-weight: 600; }
+  .phone { width: 360px; background: var(--bg); border-radius: 30px; padding: 18px 14px 24px; margin: 0 auto 0 0; display: flex; flex-direction: column; gap: 10px; }
+  h1 { font-size: 28px; font-weight: 800; letter-spacing: -.6px; margin: 0 0 4px; }
+  .card { background: var(--card); border: .5px solid var(--hair); border-radius: 18px; padding: 14px; }
+  .card h2 { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .4px; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: center; }
+  .weather { font-size: 13px; color: var(--text2); }
+  .task { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: .5px solid var(--hair); }
+  .task:first-of-type { border-top: 0; padding-top: 0; }
+  .thumb { width: 38px; height: 38px; border-radius: 10px; background: var(--accent-soft); display: grid; place-items: center; font-size: 19px; flex: none; }
+  .body { flex: 1; min-width: 0; } .t { font-weight: 600; font-size: 15px; } .w { font-size: 12px; color: var(--text2); } .w.late { color: var(--danger); }
+  .adv { font-size: 12px; margin-top: 3px; padding: 2px 7px; border-radius: 7px; display: inline-block; background: var(--info-soft); color: var(--info); }
+  .btn { border: 0; border-radius: 10px; padding: 7px 12px; font-weight: 600; font-size: 14px; background: var(--accent); color: #fff; font-family: inherit; cursor: pointer; }
+  .btn.sec { background: var(--track); color: var(--text); }
+  .fold { width: 100%; display: flex; justify-content: space-between; align-items: center; background: none; border: 0; padding: 0; font-family: inherit; color: var(--text); cursor: pointer; font-size: 15px; font-weight: 600; }
+  .fold .c { color: var(--text2); font-weight: 500; font-size: 14px; } .chev { transition: transform .15s; color: var(--text3); }
+  .open .chev { transform: rotate(90deg); }
+  .done-list { display: none; margin-top: 10px; } .open .done-list { display: block; }
+  .done { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: .5px solid var(--hair); font-size: 14px; color: var(--text2); }
+  .done .tk { color: var(--accent); font-size: 16px; } .done s { color: var(--text2); } .done .h { margin-left: auto; font-size: 12px; color: var(--text3); }
+  .undo { background: none; border: 0; color: var(--info); font-weight: 600; font-size: 13px; font-family: inherit; cursor: pointer; padding: 0 0 0 8px; }
+  .day { display: grid; grid-template-columns: 74px 1fr; gap: 8px; padding: 8px 0; border-top: .5px solid var(--hair); font-size: 14px; }
+  .day:first-of-type { border-top: 0; padding-top: 0; }
+  .dn { font-weight: 600; } .dn small { display: block; font-weight: 400; font-size: 12px; color: var(--text2); }
+  .items { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .it { background: var(--track); border-radius: 999px; padding: 3px 9px; font-size: 13px; }
+  .it.feed { background: var(--warn-soft); }
+  .wx { font-size: 12px; color: var(--info); width: 100%; } .none { color: var(--text3); font-size: 13px; }
+  .more { margin-top: 8px; background: none; border: 0; color: var(--accent); font-weight: 600; font-size: 14px; font-family: inherit; cursor: pointer; padding: 0; }
+  .hide { display: none; }
+  .msg { font-size: 13px; color: var(--text2); text-align: center; padding: 4px 0 0; }
+  .tabbar { display: flex; justify-content: space-around; border-top: .5px solid var(--hair); padding-top: 8px; margin-top: 4px; font-size: 11px; color: var(--text3); font-weight: 600; }
+  .tabbar .on { color: var(--accent); }
+</style>
+</head>
+<body>
+<p class="intro"><b>Maqueta interactiva.</b> Pulsa «Hecho» en una tarea, abre «Hecho hoy» y prueba «Deshacer», y despliega «Ver la semana». Datos de ejemplo.</p>
+<div class="phone">
+  <h1>Mi Jardín</h1>
+  <div class="card weather">🌤️ Hoy 25° / 15° · 🌧️ viernes 13 mm · Sin avisos del tiempo</div>
+
+  <section class="card" id="todayCard">
+    <h2>Para hoy <span id="todayCount">3</span></h2>
+    <div id="todayList"></div>
+    <p class="msg hide" id="allDone">🌿 Todo hecho por hoy</p>
+  </section>
+
+  <section class="card" id="doneCard">
+    <button class="fold" id="doneFold"><span>✅ Hecho hoy <span class="c" id="doneCount">· 1</span></span><span class="chev">›</span></button>
+    <div class="done-list" id="doneList"></div>
+  </section>
+
+  <section class="card">
+    <h2>Próximos días</h2>
+    <div id="days"></div>
+    <button class="more" id="moreBtn">Ver la semana</button>
+  </section>
+
+  <div class="tabbar"><span class="on">☀️ Hoy</span><span>🌱 Plantas</span><span>⚙️ Ajustes</span></div>
+</div>
+
+<script>
+  const today = [
+    { id: 1, icon: "💧", t: "Regar Limonero", w: "Atrasado 1 día · Terraza sur", late: true },
+    { id: 2, icon: "💧", t: "Regar Albahaca", w: "Hoy · Terraza sur" },
+    { id: 3, icon: "🧪", t: "Abonar Geranio", w: "Hoy · Terraza sur" },
+  ];
+  let done = [{ id: 0, icon: "💧", t: "Regar Hortensia", h: "8:15" }];
+  const days = [
+    { d: "Mañana", s: "sáb 3", items: [["💧", "Rosal"], ["💧", "Glicinia"]] },
+    { d: "Domingo", s: "4 oct", items: [] },
+    { d: "Lunes", s: "5 oct", items: [["🧪", "Limonero", "feed"]] },
+    { d: "Martes", s: "6 oct", items: [["💧", "Albahaca"], ["💧", "Jazmín"]], wx: "🌧️ 13 mm previstos: probablemente no haga falta regar" },
+    { d: "Miércoles", s: "7 oct", items: [["💧", "Limonero"]] },
+    { d: "Jueves", s: "8 oct", items: [] },
+    { d: "Viernes", s: "9 oct", items: [["💧", "Hortensia"], ["🧪", "Rosal", "feed"]] },
+  ];
+  let week = false;
+  const $ = (id) => document.getElementById(id);
+  const now = () => new Date().toTimeString().slice(0, 5);
+
+  function render() {
+    $("todayList").innerHTML = today.map((x) => `
+      <div class="task"><span class="thumb">🪴</span><div class="body"><div class="t">${x.icon} ${x.t}</div><div class="w ${x.late ? "late" : ""}">${x.w}</div></div>
+      <button class="btn" data-done="${x.id}">Hecho</button></div>`).join("");
+    $("todayCount").textContent = today.length;
+    $("allDone").classList.toggle("hide", today.length > 0);
+    $("doneCard").classList.toggle("hide", done.length === 0);
+    $("doneCount").textContent = `· ${done.length}`;
+    $("doneList").innerHTML = done.map((x) => `
+      <div class="done"><span class="tk">✓</span><s>${x.icon} ${x.t}</s><span class="h">${x.h}</span><button class="undo" data-undo="${x.id}">Deshacer</button></div>`).join("");
+    $("days").innerHTML = days.slice(0, week ? 7 : 3).map((x) => `
+      <div class="day"><div class="dn">${x.d}<small>${x.s}</small></div><div class="items">
+        ${x.items.length ? x.items.map(([i, n, k]) => `<span class="it ${k || ""}">${i} ${n}</span>`).join("") : `<span class="none">Nada</span>`}
+        ${x.wx ? `<span class="wx">${x.wx}</span>` : ""}</div></div>`).join("");
+    $("moreBtn").textContent = week ? "Ver menos" : "Ver la semana";
+  }
+  document.addEventListener("click", (e) => {
+    const d = e.target.dataset;
+    if (d.done) { const i = today.findIndex((x) => x.id == d.done); const [x] = today.splice(i, 1); done.unshift({ ...x, h: now() }); render(); }
+    if (d.undo) { const i = done.findIndex((x) => x.id == d.undo); const [x] = done.splice(i, 1); if (x.w) today.push(x); render(); }
+    if (e.target.closest("#doneFold")) $("doneCard").classList.toggle("open");
+    if (e.target.id === "moreBtn") { week = !week; render(); }
+  });
+  render();
+</script>
+</body>
+</html>

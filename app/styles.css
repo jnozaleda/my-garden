@@ -323,3 +323,26 @@ label.switch-row { cursor: pointer; }
 .species-input { font-size: 14px; font-style: italic; color: var(--text-2); }
 .name-input:focus-visible, .species-input:focus-visible { outline: none; border-bottom-color: var(--accent); }
 .ai-btn { color: var(--ai); }
+
+/* Hoy: Para hoy · Hecho hoy · Próximos días */
+.card h2 .count { float: right; color: var(--text-2); }
+.all-done { text-align: center; padding: 4px 0; }
+.fold { width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 600; }
+.fold .chev { color: var(--text-3); transition: transform 0.15s; }
+.done-card.open .chev { transform: rotate(90deg); }
+.done-list { margin-top: 10px; }
+.done-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 0.5px solid var(--hairline); font-size: 14px; color: var(--text-2); }
+.done-row .tick { color: var(--accent); font-weight: 700; }
+.done-row s { flex: 1; min-width: 0; }
+.done-row .time { font-size: 12px; color: var(--text-3); }
+.undo { color: var(--info); font-weight: 600; font-size: 13px; }
+.day-row { display: grid; grid-template-columns: 82px 1fr; gap: 8px; padding: 9px 0; border-top: 0.5px solid var(--hairline); }
+.day-row:first-of-type { border-top: 0; padding-top: 0; }
+.day-name { font-weight: 600; font-size: 14px; }
+.day-name small { display: block; font-weight: 400; font-size: 12px; color: var(--text-2); }
+.day-items { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.day-chip { background: var(--track); border-radius: 999px; padding: 4px 10px; font-size: 13px; }
+.day-chip.feed { background: var(--warn-soft); }
+.day-wx { width: 100%; font-size: 12px; color: var(--info); }
+.day-wx.hot { color: var(--warn); }
+.link-btn { margin-top: 8px; color: var(--accent); font-weight: 600; font-size: 14px; }
