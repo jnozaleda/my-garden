@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003g";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003h";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261003g";
-import { buildICS } from "./calendar.js?v=20261003g";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003g";
+} from "./rules.js?v=20261003h";
+import { buildICS } from "./calendar.js?v=20261003h";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003h";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -709,6 +709,19 @@ const UPGRADES = [
 ];
 const CARE_VERSION = Math.max(...UPGRADES.map((u) => u.version));
 // What the AI says about light and cold, kept on the plant.
+// What the AI says about the plant itself (shown in Explorar and in the sheet's «Sobre la planta»).
+const INFO_KEYS = ["plantIn", "potAdvice", "windSensitive", "plantMonths", "plantWhen", "matureSize", "matureNote", "bloomMonths", "bloomWhat", "difficulty", "toxic", "toxicNote", "invasive"];
+const infoFields = (care) => Object.fromEntries(INFO_KEYS.filter((k) => care[k] !== undefined).map((k) => [k, care[k]]));
+const DIFFICULTY = { facil: "Cuidado fácil", media: "Cuidado medio", exigente: "Exigente de cuidar" };
+const SIZE_FINAL = { pequena: "pequeña", mediana: "mediana", grande: "grande" };
+const PLANT_IN = { maceta: "Mejor en maceta", suelo: "Mejor en suelo", ambos: "Maceta o suelo" };
+const TOXIC_TEXT = { mascotas: "Tóxica para mascotas", personas: "Tóxica para personas", ambos: "Tóxica para mascotas y personas" };
+// 12 months, E…D, with the ones in `months` filled and the current month marked.
+function monthStrip(months, label, note = "") {
+  if (!months?.length) return "";
+  const now = Number(localToday().slice(5, 7));
+  return `<div class="mstrip-row"><span class="mstrip-label">${esc(label)}</span><div class="mstrip">${"EFMAMJJASOND".split("").map((m, i) => `<span class="${months.includes(i + 1) ? "on" : ""} ${i + 1 === now ? "now" : ""}">${m}</span>`).join("")}</div>${note ? `<small>${esc(note)}</small>` : ""}</div>`;
+}
 const sunFields = (care) => ({ sunNeed: care.sunNeed ?? "sun", sunSensitive: Boolean(care.sunSensitive), minTemp: care.minTemp ?? null });
 const hasSeasonalCare = (p) => Boolean(p.seasons) && new Set(SEASONS.map((k) => `${p.seasons[k].water}/${p.seasons[k].feed}`)).size > 1;
 // Plants from before versioning: a varied season table means version 1; a stored AI proposal, version 2.
@@ -850,6 +863,21 @@ sheet.addEventListener("touchend", () => {
 });
 sheet.addEventListener("cancel", (e) => { if (!confirmDiscard()) e.preventDefault(); }); // Esc / back gesture
 
+// «Sobre la planta»: size, flowering, difficulty, where it does best and safety (plants added since Explorar).
+function aboutCard(p) {
+  const i = p.info;
+  if (!i) return "";
+  const row = (icon, title, text, level = "info") => `<div class="fit-row"><span class="fit-ic ${level}">${ICONS[icon]}</span><div><b>${esc(title)}</b>${text ? `<span>${esc(text)}</span>` : ""}</div></div>`;
+  return `<section class="card"><div class="sec">Sobre la planta</div>
+    ${i.matureNote ? row("sprout", `Tamaño adulto ${SIZE_FINAL[i.matureSize] ?? ""}`.trim(), i.matureNote) : ""}
+    ${monthStrip(i.bloomMonths, i.bloomWhat || "Flor o fruto")}
+    ${i.difficulty ? row("check", DIFFICULTY[i.difficulty], "") : ""}
+    ${i.plantIn ? row(i.plantIn === "suelo" ? "ground" : "pot", PLANT_IN[i.plantIn], i.potAdvice) : ""}
+    ${i.toxic && i.toxic !== "no" ? row("alert", TOXIC_TEXT[i.toxic], i.toxicNote, "warn") : ""}
+    ${i.invasive ? row("alert", "Puede ser invasora", "Evita que se escape del jardín.", "warn") : ""}
+  </section>`;
+}
+
 function plantSheet(id) {
   const p = plantById(id);
   if (!p) return closeSheet();
@@ -914,6 +942,7 @@ function plantSheet(id) {
     <section class="card"><div class="sec">Registrar</div><div class="acts">
       ${Object.entries(CARE).filter(([type]) => type !== "task").map(([type, c]) => `<button type="button" class="act" data-action="log" data-type="${type}" data-id="${p.id}" data-reopen="1">${ICONS[LOG_ICON[type]]}${c.done}</button>`).join("")}
     </div></section>
+    ${aboutCard(p)}
     ${p.notes ? `<section class="card"><div class="sec start">Notas${aiMark(isAiValue(p, "notes"))}</div><p class="muted notes-text">${esc(p.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
     ${yearCalendarCard(p, today)}
     <section class="card"><div class="sec">Historial</div>${log.length ? `<ul class="log">${log.map((e) => `
@@ -1253,6 +1282,7 @@ async function aiFill(query) {
     form.dataset.aiNotes = care.notes;
     form.dataset.aiSnapshot = JSON.stringify(aiSnapshot(care));
     form.dataset.sunFields = JSON.stringify({ minTemp: care.minTemp ?? null });
+    form.dataset.info = JSON.stringify(infoFields(care));
     form.dataset.tips = JSON.stringify(care.tips ?? null);
     form.dataset.feedTypes = JSON.stringify(care.feedTypes ?? null);
     $("tipsBox").innerHTML = tipsList(care.tips);
@@ -1312,6 +1342,7 @@ const ICONS = {
   gridView: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
   sync: svg('<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/>'),
+  bookmark: svg('<path d="M6 4h12v17l-6-4-6 4z"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   search: svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'),
   camera: svg('<path d="M5 7h1a2 2 0 0 0 2-2 1 1 0 0 1 1-1h6a1 1 0 0 1 1 1 2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/>'),
@@ -1507,6 +1538,8 @@ function exploreSheet() {
         <button class="btn block" type="submit">Ver si encaja</button>
       </form>
       <label class="card id-cta">${ICONS.camera}<div><b>¿No sabes cómo se llama?</b><span class="muted small">Hazle una foto y la identifico.</span></div><input type="file" id="exploreCam" accept="image/*" hidden /></label>
+      ${wishlist().length ? `<div class="group-title">Para decidir</div><section class="card list-card">${wishlist().map((w, i) =>
+        `<div class="p-row"><button type="button" class="wish-main" data-action="explore-recent" data-w="${i}"><div class="body"><div class="p-name">${esc(w.name)}</div><div class="p-sp">${esc(w.species ?? "")}</div></div><span class="verdict-dot ${w.verdict}">${{ good: "Encaja bien", mid: "Con reservas", bad: "No encaja" }[w.verdict]}</span></button><button type="button" class="x" data-action="wish-del" data-i="${i}" aria-label="Quitar de la lista">${ICONS.x}</button></div>`).join("")}</section>` : ""}
       ${recent.length ? `<div class="group-title">Vistas hace poco</div><section class="card list-card">${recent.map((r, i) =>
         `<button type="button" class="p-row" data-action="explore-recent" data-i="${i}"><div class="body"><div class="p-name">${esc(r.name)}</div><div class="p-sp">${esc(r.species ?? "")}</div></div><span class="verdict-dot ${r.verdict}">${{ good: "Encaja bien", mid: "Con reservas", bad: "No encaja" }[r.verdict]}</span></button>`).join("")}</section>` : ""}`);
   }
@@ -1521,16 +1554,60 @@ function exploreSheet() {
     return openSheet(`${head}<section class="card"><b>${esc(e.message ?? "No se ha podido")}</b></section><button class="btn block" data-action="explore-again">Probar otra vez</button>`);
   }
   const { care, report, refPhoto: ph } = e;
+  const today = localToday();
+  const season = seasonOf(today, here().lat);
+  const LV = { ok: "check", warn: "alert", no: "x", info: "pin" };
+  const hero = e.photo ?? ph?.url;
+  const pills = [
+    care.frostSensitive || care.minTemp != null ? ["snow", care.frostSensitive ? `Sensible a heladas${care.minTemp != null ? ` · mín. ${care.minTemp}°` : ""}` : `Aguanta hasta ${care.minTemp}°`] : null,
+    [LIGHT_ICON[care.sunSensitive ? "shade" : care.sunNeed ?? "sun"], care.sunSensitive ? "Sensible al sol directo" : `Pide ${SUN_NEED_LABEL[care.sunNeed ?? "sun"]}`],
+    care.plantIn ? [care.plantIn === "suelo" ? "ground" : "pot", PLANT_IN[care.plantIn]] : null,
+    care.windSensitive ? ["wind", "Teme el viento"] : null,
+    care.difficulty ? ["check", DIFFICULTY[care.difficulty]] : null,
+  ].filter(Boolean);
+  const row = (icon, title, text, level = "info") => `<div class="fit-row"><span class="fit-ic ${level}">${ICONS[icon]}</span><div><b>${esc(title)}</b>${text ? `<span>${esc(text)}</span>` : ""}</div></div>`;
   const ICON = { climate: "snow", water: "droplet", sun: "sun", similar: "sprout" };
+  const seasons = SEASONS.map((k) => `<span class="st-name ${k === season ? "now" : ""}">${ICONS[SEASON_ICON[k]]}${SEASON_LABEL[k]}</span><span class="sr-cell">${care.seasons[k].water} d</span><span class="sr-cell">${care.seasons[k].feed ? `${care.seasons[k].feed} d` : "No"}</span>`).join("");
   openSheet(`${head}
-    <section class="card species-check">${ph ? `<img src="${esc(ph.url)}" alt="" />` : e.photo ? `<img src="${esc(e.photo)}" alt="" />` : ""}
-      <div class="body"><b>${esc(care.commonName || e.name)} <span class="ai-mark">✦</span></b><i>${esc(care.species)}</i>${ph ? `<small>Foto: ${esc(ph.credit)}</small>` : ""}</div></section>
-    <section class="verdict ${report.verdict}"><b>${esc(report.headline)}</b><span>${esc(report.summary)}</span></section>
-    <section class="card">${report.rows.map((r) => `<div class="fit-row"><span class="fit-ic ${r.level}">${ICONS[ICON[r.kind]]}</span><div><b>${esc(r.title)}</b><span>${esc(r.text)}</span></div></div>`).join("")}</section>
+    <section class="explore-hero">${hero ? `<img class="hero-photo" src="${esc(hero)}" alt="" />` : ""}
+      ${!e.photo && ph ? `<small class="hero-credit">Foto: ${esc(ph.credit)}</small>` : ""}
+      <div class="body"><b>${esc(care.commonName || e.name)} <span class="ai-mark">✦</span></b><i>${esc(care.species)}</i></div></section>
+    <div class="traits">${pills.map(([icon, label]) => `<span class="trait">${ICONS[icon]}${esc(label)}</span>`).join("")}</div>
+    <section class="verdict ${report.verdict}"><b>${esc(report.headline)}</b>
+      <div class="vchips">${report.chips.map((c) => `<span class="vchip ${c.level}">${ICONS[LV[c.level]]}${c.label}</span>`).join("")}</div></section>
+    <section class="card">${report.rows.map((r) => row(ICON[r.kind], r.title, r.text, r.level)).join("")}</section>
+    <section class="card"><div class="sec">Dónde ponerla</div>
+      ${report.zones.length ? report.zones.map((z) => row(LV[z.level], z.zone, z.text, z.level)).join("") : `<p class="muted small">Aún no tienes zonas. Cuando añadas plantas y marques el sol de cada zona (Ajustes), te diré dónde encaja.</p>`}
+      ${care.plantIn ? row(care.plantIn === "suelo" ? "ground" : "pot", PLANT_IN[care.plantIn], care.potAdvice) : ""}
+      ${care.windSensitive ? row("wind", "Mejor al abrigo del viento", "El viento fuerte la daña.", "warn") : ""}</section>
+    <section class="card"><div class="sec">Cuándo y cómo será</div>
+      ${care.plantWhen ? `<p class="muted">${esc(care.plantWhen)}</p>` : ""}
+      ${monthStrip(care.plantMonths, "Mejores meses para plantarla")}
+      ${monthStrip(care.bloomMonths, care.bloomWhat || "Flor o fruto")}
+      ${care.matureNote ? row("sprout", `Tamaño adulto ${SIZE_FINAL[care.matureSize] ?? ""}`.trim(), care.matureNote) : ""}</section>
+    <section class="card"><div class="sec">Riego y abono por estación</div>
+      <div class="season-read"><span></span><span class="st-h">Regar cada</span><span class="st-h">Abonar cada</span>${seasons}</div>
+      ${care.tips?.[season] ? `<div class="n-tip">${ICONS[SEASON_ICON[season]]}<span>${esc(care.tips[season])} <span class="ai-mark">✦</span></span></div>` : ""}</section>
+    <div id="exploreCal">${exploreCalendar(e)}</div>
+    ${report.similar ? `<section class="card"><div class="sec">Comparada con tu ${esc(plantLabel(report.similar.plant))}</div>${report.similar.lines.map((l) => `<p class="cmp">${esc(l)}</p>`).join("")}</section>` : ""}
+    ${care.buyTips?.length ? `<section class="card"><details class="buy-tips"><summary>Qué mirar al comprarla</summary><ul>${care.buyTips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></details></section>` : ""}
+    ${(care.toxic && care.toxic !== "no") || care.invasive ? `<section class="card">
+      ${care.toxic && care.toxic !== "no" ? row("alert", TOXIC_TEXT[care.toxic], care.toxicNote, "warn") : ""}
+      ${care.invasive ? row("alert", "Puede ser invasora", "Evita que se escape del jardín.", "warn") : ""}</section>` : ""}
     ${altButtons(care.alternatives, "explore-alt")}
     <p class="muted small">Es una estimación de la IA, no una garantía. «Añadir» abre el alta ya rellena.</p>
-    <div class="sheet-actions"><button class="btn block" data-action="explore-add">Añadir a mi jardín</button></div>`);
+    <div class="sheet-actions two-btns"><button class="btn secondary" data-action="wish-toggle" id="wishBtn">${wishLabel(care.species)}</button><button class="btn" data-action="explore-add">Añadir a mi jardín</button></div>`);
 }
+// The year calendar of the explored plant (same grid as the plant sheet); it arrives after the rest.
+function exploreCalendar(e) {
+  if (e.calendar === undefined) return `<section class="card"><div class="sec">Calendario del año</div><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Preparando el calendario…</div></section>`;
+  if (!e.calendar) return `<section class="card"><div class="sec">Calendario del año</div><p class="muted small">No se ha podido preparar ahora. Al añadir la planta se pedirá de nuevo.</p></section>`;
+  return yearCalendarCard({ seasons: e.care.seasons, yearTasks: e.calendar.tasks }, localToday());
+}
+// Wishlist («Para decidir»): plants looked at in Explorar and kept for later. Stays on this phone.
+const wishlist = () => store.get("mj_wishlist", []);
+const wishLabel = (species) => (wishlist().some((w) => w.species === species) ? `${ICONS.bookmark}Guardada · quitar` : `${ICONS.bookmark}Guardar para después`);
+
 async function exploreLookup(query, name = query, photo = null) {
   explore = { state: "loading", name, query, photo, step: "Buscando la planta" };
   exploreSheet();
@@ -1547,6 +1624,9 @@ async function exploreLookup(query, name = query, photo = null) {
     exploreSheet();
     const done = explore;
     refPhoto(care.species).then((ph) => { if (explore === done) { done.refPhoto = ph; if ($("sheet").open && sheet.querySelector('[data-action="explore-add"]')) exploreSheet(); } });
+    requestCalendar(care.commonName || name, care.species)
+      .then((cal) => { done.calendar = cal; }, () => { done.calendar = null; })
+      .then(() => { if (explore === done && $("exploreCal")) $("exploreCal").innerHTML = exploreCalendar(done); });
   } catch (err) {
     if (explore === current) { explore = { state: "error", message: AI_ERRORS[err.message] ?? "La IA no está disponible ahora. Prueba otra vez en un rato." }; exploreSheet(); }
   }
@@ -1712,7 +1792,7 @@ function wizSave() {
     seasons: wiz.seasons, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
     frostSensitive: wiz.frostSensitive, autoWater: wiz.autoWater, notes: wiz.notes, tips: wiz.tips, feedTypes: wiz.feedTypes, photo: draftPhoto,
   };
-  if (wiz.ai === "done" && wiz.care) { plant.ai = aiSnapshot(wiz.care); plant.minTemp = wiz.care.minTemp ?? null; }
+  if (wiz.ai === "done" && wiz.care) { plant.ai = aiSnapshot(wiz.care); plant.minTemp = wiz.care.minTemp ?? null; plant.info = infoFields(wiz.care); }
   if (wiz.sunNeed || wiz.sunSensitive) { plant.sunNeed = wiz.sunNeed || "partial"; plant.sunSensitive = wiz.sunSensitive; }
   plant.sun = wiz.sun || "";
   plant.size = wiz.size || "";
@@ -1954,7 +2034,16 @@ const actions = {
     <button type="button" class="menu-row" data-action="explore-open"><span class="menu-ic explore">${ICONS.search}</span><span><b>Explorar una planta</b><small>Ver si encaja, sin añadirla</small></span></button>`),
   "explore-open": () => { explore = { state: "idle" }; exploreSheet(); },
   "explore-again": () => { explore = { state: "idle" }; exploreSheet(); },
-  "explore-recent": (d) => { const r = recentExplore()[+d.i]; if (r) exploreLookup(r.query, r.name); },
+  "explore-recent": (d) => { const r = d.w !== undefined ? wishlist()[+d.w] : recentExplore()[+d.i]; if (r) exploreLookup(r.query, r.name); },
+  "wish-toggle": () => {
+    const e = explore;
+    if (!e?.care) return;
+    const list = wishlist();
+    const has = list.some((w) => w.species === e.care.species);
+    store.set("mj_wishlist", has ? list.filter((w) => w.species !== e.care.species) : [{ query: e.query, name: e.care.commonName || e.name, species: e.care.species, verdict: e.report.verdict, at: localToday() }, ...list]);
+    $("wishBtn").innerHTML = wishLabel(e.care.species);
+  },
+  "wish-del": (d) => { store.set("mj_wishlist", wishlist().filter((_, i) => i !== +d.i)); exploreSheet(); },
   "explore-alt": (d) => { const a = explore?.care?.alternatives?.[+d.i]; if (a) exploreLookup(altQuery(a), a.commonName); },
   "explore-pick": (d) => { const c = explore?.candidates?.[+d.i]; if (c) exploreLookup(altQuery(c), c.commonName, explore.photo); },
   "explore-add": () => {
@@ -2124,6 +2213,7 @@ document.addEventListener("submit", (e) => {
   if (e.target.dataset.aiFilled) fields.careVersion = Math.max(3, Math.min(careVersionOf(plantById(id) ?? {}), CARE_VERSION));
   if (e.target.dataset.aiSnapshot) fields.ai = JSON.parse(e.target.dataset.aiSnapshot);
   if (e.target.dataset.sunFields) Object.assign(fields, JSON.parse(e.target.dataset.sunFields));
+  if (e.target.dataset.info) fields.info = JSON.parse(e.target.dataset.info);
   if (e.target.dataset.tips && e.target.dataset.tips !== "null") fields.tips = JSON.parse(e.target.dataset.tips);
   if (e.target.dataset.feedTypes && e.target.dataset.feedTypes !== "null") fields.feedTypes = JSON.parse(e.target.dataset.feedTypes);
   if (id) Object.assign(plantById(id), fields);

@@ -101,8 +101,22 @@ export function sunAdvice(plant, zoneSun = {}) {
   return { level: fit, text: `${asks} y recibe ${SUN_LABEL[exposure].toLowerCase()}: mejor en ${move}.` };
 }
 
+// Why an exposure does or doesn't suit a plant, in one short sentence.
+export function zoneReason(need, sensitive, exposure) {
+  const fit = sunFit(need, sensitive, exposure);
+  if (!fit) return "";
+  if (fit === "ok") return `Recibe ${SUN_LABEL[exposure].toLowerCase()}: le va bien.`;
+  if (sensitive) return exposure === "sun" ? "Demasiado sol: se le queman las hojas." : "Sol directo unas horas: mejor donde le dé sombra a mediodía.";
+  const table = {
+    sun: { partial: "Algo justa de luz: florecerá menos.", shade: "Muy poca luz: no prosperará." },
+    partial: { sun: "Mucho sol: mejor con sombra a mediodía.", shade: "Algo escasa de luz." },
+    shade: { sun: "Demasiado sol para una planta de sombra.", partial: "Aguanta, pero prefiere más sombra." },
+  };
+  return table[need ?? "sun"]?.[exposure] ?? "";
+}
+
 // «Explorar»: how a plant (its care sheet from the AI) fits the user's garden.
-// Returns { verdict: "good" | "mid" | "bad", headline, summary, rows: [{ kind, level, title, text }] }.
+// Returns { verdict: "good" | "mid" | "bad", headline, chips, zones, rows, similar }.
 export function fitReport(care, plants, zoneSun, season, place) {
   const rows = [];
   const names = (list) => list.map(plantLabel).join(", ").replace(/, ([^,]*)$/, " y $1");
@@ -116,31 +130,49 @@ export function fitReport(care, plants, zoneSun, season, place) {
       text: `${every <= 2 ? "Muy exigente: riego casi diario en maceta" : `Riego cada ${every} días`} en ${SEASON_LABEL[season].toLowerCase()}.${like.length ? ` Parecido a ${names(like.slice(0, 3))}.` : ""}`,
     });
   }
-  const zones = [...new Set([...plants.map((p) => p.zone || ""), ...Object.keys(zoneSun)])].filter((z) => zoneSun[z]);
-  const zoneName = (z) => z || "Sin zona";
-  const fits = zones.map((z) => [z, sunFit(care.sunNeed, care.sunSensitive, zoneSun[z])]);
-  const okZ = fits.filter(([, f]) => f === "ok").map(([z]) => zoneName(z));
-  const warnZ = fits.filter(([, f]) => f === "warn").map(([z]) => zoneName(z));
-  const noZ = fits.filter(([, f]) => f === "no").map(([z]) => zoneName(z));
+  // Each of the user's zones against the light the plant asks for.
+  const zoneNames = [...new Set([...plants.map((p) => p.zone || ""), ...Object.keys(zoneSun)])];
+  const order = { ok: 0, warn: 1, no: 2, info: 3 };
+  const zones = zoneNames.map((z) => {
+    const level = sunFit(care.sunNeed, care.sunSensitive, zoneSun[z]) ?? "info";
+    return { zone: z || "Sin zona", level, text: zoneSun[z] ? zoneReason(care.sunNeed, care.sunSensitive, zoneSun[z]) : "Sin dato de sol: indícalo en Ajustes." };
+  }).sort((a, b) => order[a.level] - order[b.level] || a.zone.localeCompare(b.zone, "es"));
+  const known = zones.filter((z) => z.level !== "info");
   rows.push({
-    kind: "sun", level: !zones.length ? "info" : okZ.length ? "ok" : warnZ.length ? "warn" : "no", title: "Sol",
-    text: `Pide ${SUN_NEED_LABEL[care.sunNeed ?? "sun"]}${care.sunSensitive ? " y el sol directo le perjudica: mejor en sombra" : ""}.` +
-      (okZ.length ? ` Encaja en ${okZ.join(", ")}.` : "") + (!okZ.length && warnZ.length ? ` Con reservas en ${warnZ.join(", ")}.` : "") +
-      (noZ.length ? ` No encaja en ${noZ.join(", ")}.` : "") + (!zones.length ? " Indica el sol de tus zonas (Ajustes) para saber dónde encaja." : ""),
+    kind: "sun", level: !known.length ? "info" : known.some((z) => z.level === "ok") ? "ok" : known.some((z) => z.level === "warn") ? "warn" : "no", title: "Sol",
+    text: `Pide ${SUN_NEED_LABEL[care.sunNeed ?? "sun"]}${care.sunSensitive ? "; el sol directo le perjudica" : ""}.`,
   });
   const genus = String(care.species ?? "").split(" ")[0].toLowerCase();
   const kin = genus ? plants.filter((p) => String(p.species ?? "").split(" ")[0].toLowerCase() === genus) : [];
   if (kin.length) rows.push({ kind: "similar", level: "ok", title: "Parecidas en tu jardín", text: `Ya tienes ${names(kin.slice(0, 3))}, de la misma familia.` });
-  const bad = rows.find((r) => r.kind === "climate")?.level === "no";
+  const level = (kind) => rows.find((r) => r.kind === kind)?.level;
+  const bad = level("climate") === "no";
   const concern = rows.find((r) => r.level === "warn" || r.level === "no");
   const verdict = bad ? "bad" : concern ? "mid" : "good";
   const where = place || "tu zona";
   return {
     verdict,
     headline: { good: `Encaja bien en ${where}`, mid: `Encaja con reservas en ${where}`, bad: `No es buena idea en ${where}` }[verdict],
-    summary: concern ? concern.text : "No veo pegas con tu clima, tu luz ni lo que ya tienes.",
+    chips: [["climate", "Clima"], ["water", "Agua"], ["sun", "Sol"]].map(([kind, label]) => ({ kind, label, level: level(kind) ?? "info" })),
+    zones,
     rows,
+    similar: compareWith(care, plants, season),
   };
+}
+
+// The plant of the garden most like this one (same genus first, then closest watering) and how they differ.
+export function compareWith(care, plants, season) {
+  if (!plants.length) return null;
+  const every = care.seasons?.[season]?.water;
+  const genus = String(care.species ?? "").split(" ")[0].toLowerCase();
+  const score = (p) => (String(p.species ?? "").split(" ")[0].toLowerCase() === genus ? 0 : 10) + Math.abs((intervalFor(p, "water", season) ?? 30) - (every ?? 30));
+  const best = [...plants].sort((a, b) => score(a) - score(b))[0];
+  const lines = [];
+  const e2 = intervalFor(best, "water", season);
+  if (every && e2) lines.push(Math.abs(e2 - every) <= 1 ? `Riego: parecido (cada ${every} días frente a ${e2}).` : every < e2 ? `Riego: más exigente (cada ${every} días frente a ${e2}).` : `Riego: más tranquila (cada ${every} días frente a ${e2}).`);
+  if (best.sunNeed && care.sunNeed) lines.push(best.sunNeed === care.sunNeed ? `Luz: la misma (${SUN_NEED_LABEL[care.sunNeed]}).` : `Luz: pide ${SUN_NEED_LABEL[care.sunNeed]} (la tuya, ${SUN_NEED_LABEL[best.sunNeed]}).`);
+  if (Number.isFinite(best.minTemp) && Number.isFinite(care.minTemp)) lines.push(care.minTemp === best.minTemp ? `Frío: aguanta lo mismo (${care.minTemp}°).` : care.minTemp > best.minTemp ? `Frío: aguanta menos (${care.minTemp}° frente a ${best.minTemp}°).` : `Frío: aguanta más (${care.minTemp}° frente a ${best.minTemp}°).`);
+  return lines.length ? { plant: best, lines } : null;
 }
 
 // Weather-driven checks for the week, beyond the alerts: rain spells (fungus, snails), cold

@@ -33,6 +33,20 @@ const CARE_SCHEMA = {
     minTemp: { type: "integer", minimum: -40, maximum: 25, description: "Temperatura mínima que aguanta, en °C (p. ej. 5 para una planta que sufre con 5 °C, -15 para una muy resistente)" },
     climateFit: { type: "string", enum: ["bien", "reservas", "mal"], description: "Cómo se adapta al clima de ESE lugar en exterior todo el año (frío, calor, sequedad o humedad): bien, reservas (necesita cuidados o protección) o mal (no es viable allí en exterior)" },
     climateNote: { type: "string", description: "Una frase corta (menos de 140 caracteres) sobre cómo le va en ese lugar: heladas, calor, qué protección necesita" },
+    plantIn: { type: "string", enum: ["maceta", "suelo", "ambos"], description: "Dónde rinde mejor en exterior: maceta, suelo o ambos valen" },
+    potAdvice: { type: "string", description: "Una frase corta (menos de 120 caracteres) sobre la maceta y el sustrato (tamaño, drenaje) o sobre el suelo; vacío si nada especial" },
+    windSensitive: { type: "boolean", description: "true si el viento fuerte la daña y necesita abrigo" },
+    plantMonths: { type: "array", items: { type: "integer", minimum: 1, maximum: 12 }, description: "Meses (1-12) en que mejor comprarla y plantarla en ese clima" },
+    plantWhen: { type: "string", description: "Frase corta (menos de 100 caracteres) sobre cuándo comprarla y plantarla en ese clima y por qué" },
+    matureSize: { type: "string", enum: ["pequena", "mediana", "grande"], description: "Tamaño adulto: pequena (hasta 50 cm), mediana (hasta 2 m) o grande (más de 2 m)" },
+    matureNote: { type: "string", description: "Tamaño adulto aproximado y ritmo de crecimiento, en menos de 80 caracteres (p. ej. «Hasta 3 m de alto y 2 de ancho; crece rápido»)" },
+    bloomMonths: { type: "array", items: { type: "integer", minimum: 1, maximum: 12 }, description: "Meses (1-12) con flores o fruto notable; vacío si no florece de forma notable" },
+    bloomWhat: { type: "string", description: "Qué da en esos meses (flores rosas, limones, hojas de colores…); vacío si no" },
+    difficulty: { type: "string", enum: ["facil", "media", "exigente"], description: "Lo exigente que es de cuidar para un aficionado en ese clima" },
+    buyTips: { type: "array", maxItems: 4, items: { type: "string" }, description: "De 3 a 4 consejos cortos (menos de 90 caracteres cada uno) para elegir un buen ejemplar en el vivero" },
+    toxic: { type: "string", enum: ["no", "mascotas", "personas", "ambos"], description: "Para quién es tóxica si se ingiere: no, mascotas, personas o ambos" },
+    toxicNote: { type: "string", description: "Frase corta sobre la toxicidad; vacío si no es tóxica" },
+    invasive: { type: "boolean", description: "true si es invasora o problemática en España (se escapa del jardín)" },
     notes: { type: "string", description: "Entre 2 y 4 frases cortas (menos de 350 caracteres) sobre ESTA planta válidas todo el año: luz, cuándo podar, plagas habituales. Sin meses concretos ni frecuencias de riego" },
     confidence: { type: "string", enum: ["alta", "media", "baja"], description: "baja si no reconoces bien la planta" },
     alternatives: {
@@ -45,7 +59,7 @@ const CARE_SCHEMA = {
       },
     },
   },
-  required: ["isPlant", "alternatives", "commonName", "species", ...SEASONS.flatMap((k) => [`water_${k}`, `feed_${k}`, `feedtype_${k}`, `tip_${k}`]), "frostSensitive", "sunNeed", "sunSensitive", "minTemp", "climateFit", "climateNote", "notes", "confidence"],
+  required: ["isPlant", "alternatives", "commonName", "species", ...SEASONS.flatMap((k) => [`water_${k}`, `feed_${k}`, `feedtype_${k}`, `tip_${k}`]), "frostSensitive", "sunNeed", "sunSensitive", "minTemp", "climateFit", "climateNote", "plantIn", "potAdvice", "windSensitive", "plantMonths", "plantWhen", "matureSize", "matureNote", "bloomMonths", "bloomWhat", "difficulty", "buyTips", "toxic", "toxicNote", "invasive", "notes", "confidence"],
   additionalProperties: false,
 };
 
@@ -121,7 +135,11 @@ function careMessages({ name, place, lat, lon }) {
         "ramas secas tras la cosecha, proteger del frío en las heladas. " +
         "Indica también la luz que pide (sunNeed), si el sol directo la perjudica y debe estar en sombra (sunSensitive: " +
         "solo plantas realmente de sombra), la temperatura mínima que aguanta, y cómo se adapta al clima de ese lugar " +
-        "(climateFit y una frase en climateNote: heladas, calor, protección necesaria). Responde siempre en español.",
+        "(climateFit y una frase en climateNote: heladas, calor, protección necesaria). Añade también: dónde rinde mejor " +
+        "(maceta o suelo) y un consejo de maceta/sustrato, si el viento la daña, los meses mejores para comprarla y plantarla " +
+        "en ese clima, su tamaño adulto, los meses de flor o fruto notable, lo exigente que es de cuidar, de 3 a 4 consejos " +
+        "para elegir un buen ejemplar en el vivero, si es tóxica para mascotas o personas y si es invasora en España. " +
+        "Responde siempre en español.",
     },
     {
       role: "user",
@@ -140,7 +158,7 @@ const providers = {
       messages,
       response_format: { type: "json_schema", json_schema: { name, schema, strict: true } },
       chat_template_kwargs: { enable_thinking: env.THINKING === "on" },
-      max_tokens: 2500,
+      max_tokens: 3800,
       temperature: 0.2,
     });
     const content = out?.choices?.[0]?.message?.content ?? out?.response;
@@ -241,6 +259,7 @@ function sanitizeCalendar(c) {
 }
 
 // Model output is advice, not trusted input: coerce types and clamp to the ranges the form allows.
+const monthList = (v) => [...new Set((Array.isArray(v) ? v : []).map(Number).filter((m) => m >= 1 && m <= 12))].sort((a, b) => a - b);
 function sanitize(c) {
   const int = (v, min, max, dflt) => {
     const n = Math.round(Number(v));
@@ -261,6 +280,21 @@ function sanitize(c) {
     minTemp: c.minTemp === null || c.minTemp === undefined || c.minTemp === "" || !Number.isFinite(Number(c.minTemp)) ? null : int(c.minTemp, -40, 25, null),
     climateFit: { bien: "ok", reservas: "warn", mal: "no" }[c.climateFit] ?? "warn",
     climateNote: clipSentences(str(c.climateNote, 300), 160),
+    // About the plant (Explorar and the sheet's «Sobre la planta»).
+    plantIn: ["maceta", "suelo", "ambos"].includes(c.plantIn) ? c.plantIn : "ambos",
+    potAdvice: clipSentences(str(c.potAdvice, 300), 140),
+    windSensitive: c.windSensitive === true || c.windSensitive === "true",
+    plantMonths: monthList(c.plantMonths),
+    plantWhen: clipSentences(str(c.plantWhen, 250), 120),
+    matureSize: ["pequena", "mediana", "grande"].includes(c.matureSize) ? c.matureSize : "mediana",
+    matureNote: clipSentences(str(c.matureNote, 200), 100),
+    bloomMonths: monthList(c.bloomMonths),
+    bloomWhat: str(c.bloomWhat, 60),
+    difficulty: ["facil", "media", "exigente"].includes(c.difficulty) ? c.difficulty : "media",
+    buyTips: (Array.isArray(c.buyTips) ? c.buyTips : []).map((t) => clipSentences(str(t, 200), 110)).filter(Boolean).slice(0, 4),
+    toxic: ["no", "mascotas", "personas", "ambos"].includes(c.toxic) ? c.toxic : "no",
+    toxicNote: clipSentences(str(c.toxicNote, 250), 120),
+    invasive: c.invasive === true || c.invasive === "true",
     notes: clipSentences(str(c.notes, 2000), 600),
     confidence: ["alta", "media", "baja"].includes(c.confidence) ? c.confidence : "baja",
     alternatives: (Array.isArray(c.alternatives) ? c.alternatives : [])
@@ -333,7 +367,7 @@ async function handleCare(request, env, headers, ctx) {
   const kind = ["explore", "edit", "upgrade"].includes(body.src) ? `care_${body.src}` : "care";
 
   // Same plant, same climate cell (~100 km) → same answer, whatever the month.
-  const cacheKey = `care:v13:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
+  const cacheKey = `care:v14:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) { recordAi(env, ctx, "cached", 0, request, kind); return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers); }
 
