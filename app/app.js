@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003i";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261004a";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261003i";
-import { buildICS } from "./calendar.js?v=20261003i";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003i";
+} from "./rules.js?v=20261004a";
+import { buildICS } from "./calendar.js?v=20261004a";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261004a";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -124,7 +124,7 @@ function todayView() {
   const today = localToday();
   const { plants, log } = state.data;
   const alerts = state.weather ? weatherAlerts(plants, state.weather, today).map((a) => ({ ...a, kind: ALERT_ICON[a.icon] })) : [];
-  let html = upgradeBanner() + forecastCard(alerts);
+  let html = moveBanner() + upgradeBanner() + forecastCard(alerts);
   if (!plants.length) return html + emptyGarden();
 
   // Para hoy: overdue and due today (tomorrow onwards lives in «Próximos días»).
@@ -836,6 +836,25 @@ function upgradeStatus() {
 
 // Top of Hoy: the same offer, compact. «Más tarde» hides it until a newer improvement arrives;
 // the Ajustes card and the dot on its tab stay meanwhile.
+// ---------- Mudanza a Florvia ----------
+// «Mi Jardín» is now Florvia (florvia.app). This old address stays up only to move people over: when the
+// new site answers, people with no plants are sent there at once (keeping the link's #hash), and the
+// rest get a «Mudarme» button that syncs their garden and opens Florvia with its key (#jardin=).
+const NEW_ORIGIN = (localStorage.getItem("mj_test_move") ?? "").startsWith("http") ? localStorage.getItem("mj_test_move") : "https://florvia.app"; // the override is only for testing
+const START_HASH = location.hash;
+let moveReady = false;
+(async function moveCheck() {
+  if (location.hostname !== "jnozaleda.github.io" && !localStorage.getItem("mj_test_move")) return;
+  try { await fetch(`${NEW_ORIGIN}/app/manifest.json`, { mode: "no-cors", cache: "no-store" }); } catch { return; }
+  if (!state.data.plants.length && !store.get("mj_sync", null)) { location.replace(`${NEW_ORIGIN}/app/${START_HASH}`); return; }
+  moveReady = true;
+  render();
+})();
+const moveBanner = () => moveReady ? `<section class="card upgrade-banner">
+    <p><strong>Mi Jardín ahora se llama Florvia</strong></p>
+    <p class="muted small">Pulsa y tu jardín se guarda y se abre en la dirección nueva. Allí, añade Florvia a la pantalla de inicio y vuelve a activar el aviso diario.</p>
+    <div class="row"><button class="btn small" data-action="move-florvia" id="moveBtn">Mudarme a Florvia</button></div></section>` : "";
+
 function upgradeBanner() {
   const pending = pendingUpgrades();
   const dismissed = store.get("mj_upgrade_later", 0) >= CARE_VERSION;
@@ -2053,6 +2072,19 @@ const actions = {
     plantSheet(p.id);
   },
   "open-sync": () => syncSheet(),
+  "move-florvia": async () => {
+    const btn = $("moveBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "Mudando…"; }
+    if (!syncKey()) {
+      for (const item of [...state.data.plants, ...state.data.log]) item._at ??= Date.now();
+      store.set("mj_sync", { key: newKey() });
+      await refreshUsageId();
+    }
+    await pushNow();
+    if (syncStatus.error) { if (btn) { btn.disabled = false; btn.textContent = "Mudarme a Florvia"; } return toast("No se ha podido guardar tu jardín. Prueba otra vez."); }
+    window.__moveUrl = `${NEW_ORIGIN}/app/#jardin=${syncKey()}`;
+    setTimeout(() => location.assign(window.__moveUrl), 50);
+  },
   "open-push": () => pushSheet(),
   "push-on": async () => {
     pushSheet("Activando…");
