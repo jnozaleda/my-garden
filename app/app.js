@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003f";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003g";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261003f";
-import { buildICS } from "./calendar.js?v=20261003f";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003f";
+} from "./rules.js?v=20261003g";
+import { buildICS } from "./calendar.js?v=20261003g";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003g";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -631,6 +631,8 @@ function usageSheet() {
       ${row("database", "Desde la memoria (gratis)", ai.cached, total ? `${Math.round((ai.cached / total) * 100)} %` : "")}
       ${row("clock", "Tiempo medio de respuesta", ai.calls ? `${Math.round(ai.ms / ai.calls / 1000)} s` : "—")}
       ${row("alert", "Errores", ai.errors + ai.notPlant, ai.notPlant ? `${ai.notPlant} «no es una planta»` : "")}</section>
+    ${!gardens.length ? `<section class="card"><div class="sec">IA por jardín <span class="meta ai-mark">✦ 30 días</span></div>
+      <p class="muted small">Aún no hay datos. Cuenta desde la siguiente consulta de IA hecha con la versión nueva de la app (buscar una planta, Explorar, una foto…): ciérrala y ábrela de nuevo, y haz una. Verás una fila por cada jardín sincronizado y por cada móvil sin sincronizar.</p></section>` : ""}
     ${gardens.length ? `<section class="card"><div class="sec">IA por jardín <span class="meta ai-mark">✦ 30 días</span></div>
       ${gardens.map((g) => `<div class="u-row"><span class="u-garden">${esc(g.label)}</span><b>${g.calls}<small>${[g.ficha && `${g.ficha} ficha`, g.calendario && `${g.calendario} calendario`, g.foto && `${g.foto} foto`, g.explorar && `${g.explorar} explorar`, g.hits && `${g.hits} de memoria`, g.limit && `${g.limit} sin cupo`, g.errors && `${g.errors} error`].filter(Boolean).join(" · ") || "sin consultas"}</small></b></div>`).join("")}
       <div class="u-row"><span class="u-garden">Media por jardín</span><b>${(known.length ? gardenCalls / known.length : 0).toFixed(1)}<small>consultas reales (las de memoria no cuestan)</small></b></div></section>` : ""}
