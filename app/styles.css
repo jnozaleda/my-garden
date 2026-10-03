@@ -687,3 +687,9 @@ label.link-btn { cursor: pointer; }
 .sheet-actions.two-btns .btn svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 5px; }
 .wish-main { display: flex; align-items: center; gap: 12px; flex: 1; text-align: left; }
 .p-row > .x { flex: none; }
+
+/* Sharing */
+#toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); background: #3a3a3c; color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 10; max-width: 90vw; }
+#toast.show { opacity: 1; }
+.two-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.shared-note { margin: 0; }

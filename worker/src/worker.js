@@ -734,6 +734,55 @@ async function handleIdentify(request, env, headers, ctx) {
   return json({ error: "ai" }, 502, headers);
 }
 
+// ---------- Shared copies (read-only) ----------
+// «Compartir»: the app uploads a fixed copy of a garden or of an explored plant and gets a short id;
+// anyone with the link can read it (no AI, nothing editable). Copies expire after 90 days. Only the
+// fields listed here are kept, so notes, history and exact location never leave the phone.
+const SHARE_TTL = 90 * 86400;
+const SHARE_MAX = 10 * 1024 * 1024;
+const SHARE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+const SHARE_PLANT_KEYS = ["name", "nick", "species", "zone", "photo", "refPhoto", "seasons", "tips", "feedTypes", "frostSensitive", "minTemp", "sunNeed", "sunSensitive", "sun", "rainReaches", "inPot", "autoWater", "size", "info"];
+const SHARE_CARE_KEYS = ["commonName", "species", "seasons", "feedTypes", "tips", "frostSensitive", "sunNeed", "sunSensitive", "minTemp", "climateFit", "climateNote", "plantIn", "potAdvice", "windSensitive", "plantMonths", "plantWhen", "matureSize", "matureNote", "bloomMonths", "bloomWhat", "difficulty", "buyTips", "toxic", "toxicNote", "invasive", "notes", "alternatives"];
+const pickKeys = (o, keys) => Object.fromEntries(keys.filter((k) => o?.[k] !== undefined).map((k) => [k, o[k]]));
+async function handleShareCreate(request, env, headers) {
+  const text = await request.text();
+  if (text.length > SHARE_MAX) return json({ error: "too_big" }, 413, headers);
+  let body;
+  try { body = JSON.parse(text); } catch { return json({ error: "input" }, 400, headers); }
+  // A few shares a day per connection: this is for sending to a friend, not for hosting.
+  const ip = request.headers.get("CF-Connecting-IP") ?? "local";
+  const day = new Date().toISOString().slice(0, 10);
+  const ipKey = `sharecount:${day}:${(await hashId(ip)).slice(0, 12)}`;
+  const used = Number(await env.CACHE.get(ipKey)) || 0;
+  if (used >= 20) return json({ error: "limit" }, 429, headers);
+  let data;
+  if (body.kind === "plant" && body.care && typeof body.care === "object") {
+    data = {
+      care: pickKeys(body.care, SHARE_CARE_KEYS),
+      calendar: body.calendar && Array.isArray(body.calendar.tasks) ? { tasks: body.calendar.tasks.slice(0, 8), risks: body.calendar.risks ?? [] } : null,
+      refPhoto: body.refPhoto && typeof body.refPhoto.url === "string" ? { url: String(body.refPhoto.url).slice(0, 500), credit: String(body.refPhoto.credit ?? "").slice(0, 120) } : null,
+      photo: typeof body.photo === "string" && body.photo.startsWith("data:image/") ? body.photo : null,
+      place: String(body.place ?? "").slice(0, 60),
+    };
+  } else if (body.kind === "garden" && Array.isArray(body.plants) && body.plants.length) {
+    data = {
+      plants: body.plants.slice(0, 200).map((p) => pickKeys(p, SHARE_PLANT_KEYS)),
+      zoneSun: body.zoneSun && typeof body.zoneSun === "object" ? body.zoneSun : {},
+    };
+  } else return json({ error: "input" }, 400, headers);
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  const id = [...bytes].map((b) => SHARE_ALPHABET[b % SHARE_ALPHABET.length]).join("");
+  const doc = { kind: body.kind, data, at: Date.now(), expires: Date.now() + SHARE_TTL * 1000 };
+  await env.CACHE.put(`share:${id}`, JSON.stringify(doc), { expirationTtl: SHARE_TTL });
+  await env.CACHE.put(ipKey, String(used + 1), { expirationTtl: 2 * 86400 });
+  return json({ id, expires: doc.expires }, 200, headers);
+}
+async function handleShareGet(env, headers, id) {
+  if (!/^[a-z0-9]{10}$/.test(id)) return json({ error: "input" }, 400, headers);
+  const doc = await env.CACHE.get(`share:${id}`, "json");
+  return doc ? json(doc, 200, headers) : json({ error: "not_found" }, 404, headers);
+}
+
 export default {
   // 06:00 and 07:00 UTC: whichever is 08:00 in Madrid (summer or winter) sends the daily push.
   async scheduled(event, env, ctx) {
@@ -751,6 +800,9 @@ export default {
     if (pathname === "/event" && request.method === "POST") return handleEvent(request, env, headers);
     if (pathname === "/stats") return handleStats(request, env, headers);
     if (pathname === "/identify" && request.method === "POST") return handleIdentify(request, env, headers, ctx);
+    if (pathname === "/share" && request.method === "POST") return handleShareCreate(request, env, headers);
+    const shared = pathname.match(/^\/share\/([a-z0-9]+)$/);
+    if (shared && request.method === "GET") return handleShareGet(env, headers, shared[1]);
     const push = pathname.match(/^\/push\/(subscribe|unsubscribe|test)$/);
     if (push && request.method === "POST") return handlePush(request, env, headers, push[1]);
     const garden = pathname.match(/^\/garden\/([^/]+)$/);

@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003h";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003i";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261003h";
-import { buildICS } from "./calendar.js?v=20261003h";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003h";
+} from "./rules.js?v=20261003i";
+import { buildICS } from "./calendar.js?v=20261003i";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003i";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -523,6 +523,100 @@ function pushSheet(message = null) {
         <button class="btn block" data-action="push-on">Activar aviso diario</button>`}`);
 }
 
+// ---------- Sharing (read-only copies; see the Worker's /share) ----------
+// A fixed copy of a garden or of an explored plant, with a link that expires in 90 days. Nothing can be
+// edited from it and nothing asks the AI. Notes, history and exact location never leave the phone.
+const SHARE_PLANT_KEYS = ["name", "nick", "species", "zone", "photo", "refPhoto", "seasons", "tips", "feedTypes", "frostSensitive", "minTemp", "sunNeed", "sunSensitive", "sun", "rainReaches", "inPot", "autoWater", "size", "info"];
+const shareLink = (kind, id) => `${location.origin}${location.pathname}#${kind === "garden" ? "ver" : "planta"}=${id}`;
+async function createShare(body) {
+  let res;
+  try { res = await fetch(`${API}/share`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); }
+  catch { throw new Error("network"); }
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.error ?? "ai");
+  return out;
+}
+const shareErrorText = (err) => ({ too_big: "Pesa demasiado: quita alguna foto y prueba otra vez.", limit: "Has creado muchos enlaces hoy. Prueba mañana.", network: "Sin conexión. Prueba otra vez." }[err.message] ?? "No se ha podido crear el enlace.");
+async function shareOut(url, text) {
+  if (navigator.share) { await navigator.share({ title: "Mi Jardín", text, url }).catch(() => {}); return; }
+  await navigator.clipboard?.writeText(url).catch(() => {});
+  toast("Enlace copiado");
+}
+function toast(text) {
+  let t = $("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.setAttribute("role", "status"); }
+  (sheet.open ? sheet : document.body).append(t);
+  t.textContent = text;
+  t.classList.add("show");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+let gardenShare = null; // { link, expires } once created
+function shareGardenSheet(message = null, busy = false) {
+  const n = state.data.plants.length;
+  openSheet(`<div class="sheet-head"><h2>Compartir mi jardín</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
+    <p>Crea un enlace para que otra persona vea tus plantas: fotos, zonas y cuidados. <b>Solo ver</b>: no puede cambiar nada y no gasta IA.</p>
+    <ul class="id-tips"><li>Es una <b>copia de hoy</b>: si luego cambias algo, no se actualiza (crea otro enlace).</li><li>No incluye tus notas, el historial ni tu ubicación.</li><li>Caduca a los 90 días.</li></ul>
+    ${message ? `<p class="ai-status warn">${esc(message)}</p>` : ""}
+    ${gardenShare ? `<input class="big-input key-input" readonly value="${esc(gardenShare.link)}" onfocus="this.select()" />
+      <p class="muted small">Copia del ${esc(fmtDate(localToday()))} · caduca el ${esc(fmtDate(new Date(gardenShare.expires).toISOString().slice(0, 10)))}</p>
+      <div class="two-btns"><button class="btn secondary" data-action="share-garden-copy">Copiar enlace</button><button class="btn" data-action="share-garden-send">Compartir</button></div>`
+      : n ? `<button class="btn block" data-action="share-garden-create" ${busy ? "disabled aria-busy=\"true\"" : ""}>${busy ? "Creando…" : `Crear enlace con mis ${n === 1 ? "planta" : `${n} plantas`}`}</button>` : `<p class="muted">Aún no tienes plantas que compartir.</p>`}`);
+}
+// What someone sees when they open a shared garden: the list, and each plant read-only.
+let viewing = null; // { plants, zoneSun, at, expires }
+const plantPills = (p) => [
+  p.frostSensitive ? ["snow", "Sensible a heladas"] : null,
+  p.sunNeed ? [LIGHT_ICON[p.sunSensitive ? "shade" : p.sunNeed], p.sunSensitive ? "Sensible al sol directo" : `Pide ${SUN_NEED_LABEL[p.sunNeed]}`] : null,
+  [p.inPot ? "pot" : "ground", p.inPot ? "Maceta" : "Suelo"],
+  [p.rainReaches ? "rain" : "umbrella", p.rainReaches ? "Le llega la lluvia" : "A cubierto"],
+  p.autoWater ? ["drip", "Riego automático"] : null,
+  p.size ? ["sprout", `Tamaño ${SIZE_LABEL[p.size].toLowerCase()}`] : null,
+].filter(Boolean);
+function viewGardenSheet() {
+  const v = viewing;
+  const zones = [...new Set(v.plants.map((p) => p.zone || "Sin zona"))].sort((a, b) => a.localeCompare(b, "es"));
+  openSheet(`<div class="sheet-head"><h2>Jardín compartido</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
+    <p class="muted small">Copia del ${esc(fmtDate(new Date(v.at).toISOString().slice(0, 10)))}. Solo para ver: no se actualiza.</p>
+    ${zones.map((zone) => {
+      const sun = v.zoneSun[zone === "Sin zona" ? "" : zone];
+      return `<div class="zone-title">${esc(zone)} · ${v.plants.filter((p) => (p.zone || "Sin zona") === zone).length}${sun ? `<span class="zone-auto">${ICONS[LIGHT_ICON[sun]]}${SUN_LABEL[sun]}</span>` : ""}</div><section class="card list-card">${v.plants.map((p, i) => ({ p, i })).filter(({ p }) => (p.zone || "Sin zona") === zone).map(({ p, i }) =>
+        `<button class="p-row" data-action="view-plant" data-i="${i}">${thumb(p, "thumb p-thumb")}<div class="body"><div class="p-name">${esc(plantLabel(p))}</div>${p.species ? `<div class="p-sp">${esc(p.species)}</div>` : ""}</div>${traits(p)}<span class="chev">${ICONS.chevron}</span></button>`).join("")}</section>`;
+    }).join("")}
+    <p class="muted small">¿Te gusta? Cierra esto y pulsa + para empezar el tuyo.</p>`, "shared");
+}
+function viewPlantSheet(i) {
+  const p = viewing.plants[i];
+  if (!p) return viewGardenSheet();
+  const season = seasonOf(localToday(), here().lat);
+  const hero = p.photo || p.refPhoto?.url;
+  openSheet(`<div class="sheet-head"><h2>${esc(plantLabel(p))}</h2><div class="row"><button class="btn small secondary" data-action="view-back">Atrás</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
+    ${hero ? `<img class="hero-photo" src="${esc(hero)}" alt="" />${!p.photo && p.refPhoto ? `<small class="hero-credit">Foto de referencia: ${esc(p.refPhoto.credit)}</small>` : ""}` : ""}
+    ${p.species || p.zone ? `<p class="muted">${p.nick ? `${esc(p.name)} · ` : ""}${p.species ? `<em>${esc(p.species)}</em>` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone ?? "")}</p>` : ""}
+    <div class="traits">${plantPills(p).map(([icon, label]) => `<span class="trait">${ICONS[icon]}${esc(label)}</span>`).join("")}</div>
+    ${p.seasons ? `<section class="card"><div class="sec">Riego y abono por estación</div><div class="season-read"><span></span><span class="st-h">Regar cada</span><span class="st-h">Abonar cada</span>${seasonReadCells(p.seasons, season)}</div>
+      ${p.tips?.[season] ? `<div class="n-tip">${ICONS[SEASON_ICON[season]]}<span>${esc(p.tips[season])}</span></div>` : ""}</section>` : ""}
+    ${aboutCard(p)}`, "shared");
+}
+// Opens a link that came with #ver= (a garden) or #planta= (an explored plant).
+async function openShared(id) {
+  openSheet(`<div class="sheet-head"><h2>Compartido contigo</h2><button class="btn small secondary" data-action="close">Cerrar</button></div><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Abriendo…</div>`);
+  let doc = null;
+  try { const res = await fetch(`${API}/share/${id}`, { signal: AbortSignal.timeout(20000) }); if (res.ok) doc = await res.json(); } catch {}
+  if (!doc) return openSheet(`<div class="sheet-head"><h2>Compartido contigo</h2><button class="btn small secondary" data-action="close">Cerrar</button></div><p class="ai-status warn">Este enlace ha caducado o no existe. Pídele a quien te lo envió que cree otro.</p>`);
+  if (doc.kind === "garden") {
+    viewing = { plants: doc.data.plants, zoneSun: doc.data.zoneSun ?? {}, at: doc.at, expires: doc.expires };
+    return viewGardenSheet();
+  }
+  const { care, calendar, refPhoto: ph, photo, place } = doc.data;
+  explore = {
+    state: "done", name: care.commonName || care.species, query: null, photo, care, calendar: calendar ?? null, refPhoto: ph ?? null,
+    shared: { place, at: doc.at },
+    report: fitReport(care, state.data.plants, zoneSun(), seasonOf(localToday(), here().lat), here().name),
+  };
+  exploreSheet();
+}
+
 function moreView() {
   const loc = state.loc ?? DEFAULT_LOC;
   const aiOn = aiOpen === true || (aiCode() && codeStatus?.kind !== "warn");
@@ -535,6 +629,7 @@ function moreView() {
     <section class="card list-card settings">
       ${row("open-place", "pin", "#3b82f6", "Ubicación", esc(loc.name))}
       ${row("open-sync", "sync", "#0a84ff", "Sincronizar", syncKey() ? `<span class="ok">${ICONS.circleCheck}Activada</span>` : "Desactivada")}
+      ${row("open-share", "share", "#0a84ff", "Compartir mi jardín", "Solo ver")}
       ${row("open-ai", "sparkle", "#7a56d6", "Asistente IA", aiOn ? `<span class="ok">${ICONS.circleCheck}Activado</span>` : "Sin activar")}
       ${pending || upgrade ? row("open-upgrades", "refresh", "#c7771a", "Fichas por actualizar", pending ? `<span class="dot"></span>${pending}` : "Al día") : ""}
     </section>
@@ -1342,6 +1437,7 @@ const ICONS = {
   gridView: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
   sync: svg('<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/>'),
+  share: svg('<path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>'),
   bookmark: svg('<path d="M6 4h12v17l-6-4-6 4z"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   search: svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'),
@@ -1529,7 +1625,7 @@ const recentExplore = () => store.get("mj_explore_recent", []);
 function exploreSheet() {
   const e = explore;
   const head = `<div class="sheet-head"><h2>Explorar</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>`;
-  if (!hasAI() && aiOpen !== null) return openSheet(`${head}<p class="ai-status warn">${esc(AI_ERRORS.code)}</p>`);
+  if (!e?.shared && !hasAI() && aiOpen !== null) return openSheet(`${head}<p class="ai-status warn">${esc(AI_ERRORS.code)}</p>`);
   if (!e || e.state === "idle") {
     const recent = recentExplore();
     return openSheet(`${head}
@@ -1567,8 +1663,10 @@ function exploreSheet() {
   ].filter(Boolean);
   const row = (icon, title, text, level = "info") => `<div class="fit-row"><span class="fit-ic ${level}">${ICONS[icon]}</span><div><b>${esc(title)}</b>${text ? `<span>${esc(text)}</span>` : ""}</div></div>`;
   const ICON = { climate: "snow", water: "droplet", sun: "sun", similar: "sprout" };
-  const seasons = SEASONS.map((k) => `<span class="st-name ${k === season ? "now" : ""}">${ICONS[SEASON_ICON[k]]}${SEASON_LABEL[k]}</span><span class="sr-cell">${care.seasons[k].water} d</span><span class="sr-cell">${care.seasons[k].feed ? `${care.seasons[k].feed} d` : "No"}</span>`).join("");
-  openSheet(`${head}
+  const seasons = seasonReadCells(care.seasons, season);
+  const shareHead = `<div class="sheet-head"><h2>${e.shared ? "Planta compartida" : "Explorar"}</h2><div class="row"><button class="btn small secondary icon-btn" data-action="explore-share" aria-label="Compartir">${ICONS.share}</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>`;
+  openSheet(`${shareHead}
+    ${e.shared ? `<p class="muted small">Alguien te ha enviado esta ficha. Está pensada para ${esc(e.shared.place || "otro lugar")}${e.shared.place && e.shared.place !== here().name ? `; tú estás en ${esc(here().name)}, así que el clima puede variar` : ""}. El encaje es con tu jardín.</p>` : ""}
     <section class="explore-hero">${hero ? `<img class="hero-photo" src="${esc(hero)}" alt="" />` : ""}
       ${!e.photo && ph ? `<small class="hero-credit">Foto: ${esc(ph.credit)}</small>` : ""}
       <div class="body"><b>${esc(care.commonName || e.name)} <span class="ai-mark">✦</span></b><i>${esc(care.species)}</i></div></section>
@@ -1594,10 +1692,11 @@ function exploreSheet() {
     ${(care.toxic && care.toxic !== "no") || care.invasive ? `<section class="card">
       ${care.toxic && care.toxic !== "no" ? row("alert", TOXIC_TEXT[care.toxic], care.toxicNote, "warn") : ""}
       ${care.invasive ? row("alert", "Puede ser invasora", "Evita que se escape del jardín.", "warn") : ""}</section>` : ""}
-    ${altButtons(care.alternatives, "explore-alt")}
+    ${e.shared ? "" : altButtons(care.alternatives, "explore-alt")}
     <p class="muted small">Es una estimación de la IA, no una garantía. «Añadir» abre el alta ya rellena.</p>
     <div class="sheet-actions two-btns"><button class="btn secondary" data-action="wish-toggle" id="wishBtn">${wishLabel(care.species)}</button><button class="btn" data-action="explore-add">Añadir a mi jardín</button></div>`);
 }
+const seasonReadCells = (seasons, now) => SEASONS.map((k) => `<span class="st-name ${k === now ? "now" : ""}">${ICONS[SEASON_ICON[k]]}${SEASON_LABEL[k]}</span><span class="sr-cell">${seasons[k].water} d</span><span class="sr-cell">${seasons[k].feed ? `${seasons[k].feed} d` : "No"}</span>`).join("");
 // The year calendar of the explored plant (same grid as the plant sheet); it arrives after the rest.
 function exploreCalendar(e) {
   if (e.calendar === undefined) return `<section class="card"><div class="sec">Calendario del año</div><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Preparando el calendario…</div></section>`;
@@ -1746,6 +1845,22 @@ function renderWizard() {
 // What the AI card says while waiting: it advances every couple of seconds.
 const AI_STEPS = ["Identificando la planta", "Calculando el riego por estación", "Revisando el abonado", "Escribiendo consejos"];
 
+// Fills the alta from a care sheet (the AI's, or one that came with a shared plant), keeping what the user touched.
+function applyCareToWizard(current, care) {
+  current.care = care;
+  current.ai = "done";
+  current.species = care.species;
+  for (const k of SEASONS) for (const kind of ["water", "feed"]) {
+    if (!current.touched[`${k}.${kind}`]) current.seasons[k][kind] = care.seasons[k][kind];
+  }
+  if (!current.touched.frostSensitive) current.frostSensitive = care.frostSensitive;
+  if (!current.touched.sunNeed) current.sunNeed = care.sunNeed ?? "";
+  if (!current.touched.sunSensitive) current.sunSensitive = Boolean(care.sunSensitive);
+  current.notes = care.notes;
+  current.tips = care.tips;
+  current.feedTypes = care.feedTypes;
+}
+
 async function wizLookup() {
   const current = wiz;
   current.ai = "loading";
@@ -1758,18 +1873,7 @@ async function wizLookup() {
   }, 2200);
   try {
     const care = await requestCare(current.query ?? current.name);
-    current.care = care;
-    current.ai = "done";
-    current.species = care.species;
-    for (const k of SEASONS) for (const kind of ["water", "feed"]) {
-      if (!current.touched[`${k}.${kind}`]) current.seasons[k][kind] = care.seasons[k][kind];
-    }
-    if (!current.touched.frostSensitive) current.frostSensitive = care.frostSensitive;
-    if (!current.touched.sunNeed) current.sunNeed = care.sunNeed ?? "";
-    if (!current.touched.sunSensitive) current.sunSensitive = Boolean(care.sunSensitive);
-    current.notes = care.notes;
-    current.tips = care.tips;
-    current.feedTypes = care.feedTypes;
+    applyCareToWizard(current, care);
     current.refPhoto = null;
     current.checked = false;
     refPhoto(care.species).then((ph) => { current.refPhoto = ph; if (wiz === current && $("wizStep2")) renderWizard(); });
@@ -1800,10 +1904,13 @@ function wizSave() {
   plant.careVersion = wiz.ai === "done" ? 3 : CARE_VERSION;
   withCurrentIntervals(plant);
   store.set("mj_last_place", { zone, inPot: wiz.inPot, rainReaches: wiz.rainReaches });
+  // A plant that came shared brings its calendar: no need to ask the AI for it.
+  const sharedCal = wiz.sharedCalendar?.tasks?.length ? wiz.sharedCalendar : null;
+  if (sharedCal) { applyCalendar(plant, sharedCal); plant.careVersion = CARE_VERSION; }
   state.data.plants.push(plant);
   save();
   render();
-  const askCalendar = wiz.ai === "done";
+  const askCalendar = wiz.ai === "done" && !sharedCal;
   wiz = null;
   plantSheet(plant.id);
   if (askCalendar) fetchCalendarFor(plant.id);
@@ -2040,17 +2147,46 @@ const actions = {
     if (!e?.care) return;
     const list = wishlist();
     const has = list.some((w) => w.species === e.care.species);
-    store.set("mj_wishlist", has ? list.filter((w) => w.species !== e.care.species) : [{ query: e.query, name: e.care.commonName || e.name, species: e.care.species, verdict: e.report.verdict, at: localToday() }, ...list]);
+    store.set("mj_wishlist", has ? list.filter((w) => w.species !== e.care.species) : [{ query: e.query ?? altQuery(e.care), name: e.care.commonName || e.name, species: e.care.species, verdict: e.report.verdict, at: localToday() }, ...list]);
     $("wishBtn").innerHTML = wishLabel(e.care.species);
   },
   "wish-del": (d) => { store.set("mj_wishlist", wishlist().filter((_, i) => i !== +d.i)); exploreSheet(); },
   "explore-alt": (d) => { const a = explore?.care?.alternatives?.[+d.i]; if (a) exploreLookup(altQuery(a), a.commonName); },
   "explore-pick": (d) => { const c = explore?.candidates?.[+d.i]; if (c) exploreLookup(altQuery(c), c.commonName, explore.photo); },
+  "open-share": () => { gardenShare = null; shareGardenSheet(); },
+  "share-garden-create": async () => {
+    shareGardenSheet(null, true);
+    try {
+      const plants = state.data.plants.map((p) => Object.fromEntries(SHARE_PLANT_KEYS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]])));
+      const { id, expires } = await createShare({ kind: "garden", plants, zoneSun: zoneSun() });
+      gardenShare = { link: shareLink("garden", id), expires };
+      shareGardenSheet();
+    } catch (err) { shareGardenSheet(shareErrorText(err)); }
+  },
+  "share-garden-copy": async () => { await navigator.clipboard?.writeText(gardenShare.link).catch(() => {}); toast("Enlace copiado"); },
+  "share-garden-send": () => shareOut(gardenShare.link, "Mira mi jardín en Mi Jardín"),
+  "view-plant": (d) => viewPlantSheet(+d.i),
+  "view-back": () => viewGardenSheet(),
+  "explore-share": async () => {
+    const e = explore;
+    if (!e?.care) return;
+    toast("Preparando el enlace…");
+    try {
+      const { id } = await createShare({ kind: "plant", care: e.care, calendar: e.calendar ?? null, refPhoto: e.refPhoto ?? null, photo: e.photo ?? null, place: e.shared?.place ?? here().name });
+      await shareOut(shareLink("planta", id), `Mira esta planta: ${e.care.commonName || e.name}`);
+    } catch (err) { toast(shareErrorText(err)); }
+  },
   "explore-add": () => {
     const e = explore;
     if (!e?.care) return;
     newPlantWizard();
     draftPhoto = e.photo ?? null;
+    if (e.shared) {
+      // The sheet came with the link: fill the alta from it, no AI.
+      Object.assign(wiz, { name: e.name, step: 2, refPhoto: e.refPhoto ?? null, checked: true, sharedCalendar: e.calendar ?? null });
+      applyCareToWizard(wiz, e.care);
+      return renderWizard();
+    }
     Object.assign(wiz, { name: e.name, query: e.query, step: 2 });
     if (hasAI() || aiOpen === null) wizLookup(); else renderWizard();
   },
@@ -2258,8 +2394,14 @@ render();
 refreshUsageId();
 // A shared-garden link (#jardin=KEY) opens the join sheet; otherwise bring the synced garden down.
 {
-  const linked = parseKey(new URLSearchParams(location.hash.slice(1)).get("jardin"));
-  if (linked) {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const linked = parseKey(hash.get("jardin"));
+  const sharedId = hash.get("ver") ?? hash.get("planta");
+  if (sharedId && /^[a-z0-9]{10}$/.test(sharedId)) {
+    history.replaceState(null, "", location.pathname + location.search);
+    openShared(sharedId);
+    pullNow();
+  } else if (linked) {
     history.replaceState(null, "", location.pathname + location.search);
     if (linked === syncKey()) pullNow();
     else joinSheet(linked);
