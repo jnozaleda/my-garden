@@ -660,3 +660,4 @@ label.link-btn { cursor: pointer; }
 .verdict-dot.good { color: #6cc47a; } .verdict-dot.mid { color: #f0b45a; } .verdict-dot.bad { color: #ff6b5e; }
 .t-line { display: flex; gap: 6px; align-items: center; }
 .t-light { display: flex; color: #f0b45a; }
+.u-garden { flex: 1; }

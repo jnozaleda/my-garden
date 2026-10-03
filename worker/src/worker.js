@@ -279,7 +279,7 @@ function cors(request, env) {
   const origin = request.headers.get("Origin") ?? "";
   const allowed = env.ALLOWED_ORIGINS.split(",").map((s) => s.trim());
   return allowed.includes(origin)
-    ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS", "Access-Control-Allow-Headers": "Content-Type,X-Access-Code,X-Device", "Vary": "Origin" }
+    ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS", "Access-Control-Allow-Headers": "Content-Type,X-Access-Code,X-Device,X-Usage", "Vary": "Origin" }
     : {};
 }
 
@@ -329,13 +329,15 @@ async function handleCare(request, env, headers, ctx) {
     return json({ error: "input" }, 400, headers);
   }
   const place = String(body.place ?? "").slice(0, 60);
+  // Where the request came from (alta by default), only for the usage counters.
+  const kind = ["explore", "edit", "upgrade"].includes(body.src) ? `care_${body.src}` : "care";
 
   // Same plant, same climate cell (~100 km) → same answer, whatever the month.
   const cacheKey = `care:v13:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
-  if (cached) { recordAi(env, ctx, "cached"); return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers); }
+  if (cached) { recordAi(env, ctx, "cached", 0, request, kind); return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers); }
 
-  if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
+  if (!(await takeQuota(request, env))) { recordAi(env, ctx, "limit", 0, request, kind); return json({ error: "limit" }, 429, headers); }
 
   if (!chain(env).length) return json({ error: "provider" }, 500, headers);
   let care;
@@ -345,10 +347,10 @@ async function handleCare(request, env, headers, ctx) {
     care = { ...sanitize(out), provider: from };
   } catch (err) {
     console.error("care failed", env.PROVIDER, err?.message);
-    recordAi(env, ctx, "error");
+    recordAi(env, ctx, "error", 0, request, kind);
     return json({ error: "ai" }, 502, headers);
   }
-  recordAi(env, ctx, "call", Date.now() - t0);
+  recordAi(env, ctx, "call", Date.now() - t0, request, kind);
   if (!care.isPlant) { recordAi(env, ctx, "not_plant"); return json({ error: "not_plant" }, 422, headers); }
   if (care.confidence !== "baja") await env.CACHE.put(cacheKey, JSON.stringify(care), { expirationTtl: CACHE_TTL });
   return json(withLegacy(care, body.month, lat), 200, headers);
@@ -366,16 +368,27 @@ async function hashId(id) {
 }
 async function updateStats(env, fn) {
   const key = statsKey();
-  const doc = (await env.CACHE.get(key, "json")) ?? { e: {}, d: [], ai: { calls: 0, cached: 0, errors: 0, notPlant: 0, ms: 0 } };
+  const doc = (await env.CACHE.get(key, "json")) ?? { e: {}, d: [], u: {}, ai: { calls: 0, cached: 0, errors: 0, notPlant: 0, ms: 0 } };
   fn(doc);
   await env.CACHE.put(key, JSON.stringify(doc), { expirationTtl: 400 * 86400 });
 }
 // AI calls are counted here (not by the app), so they're exact.
-const recordAi = (env, ctx, what, ms = 0) => ctx.waitUntil(updateStats(env, (doc) => {
+// Per-garden usage («X-Usage»: "g:" + hash of the garden key, or "d:" + hash of the device when the
+// garden isn't synced; the app hashes them, so the key itself never reaches the stats). One row per
+// id per day: { care, care_edit, care_upgrade, care_explore, calendar, identify: real AI calls;
+// <kind>_hit: answered from memory (free); limit; error }. Written in the same update as the totals.
+const usageId = (request) => { const v = request.headers.get("X-Usage") ?? ""; return /^[gd]:[a-f0-9]{16}$/.test(v) ? v : "anon"; };
+const recordAi = (env, ctx, what, ms = 0, request = null, kind = "") => ctx.waitUntil(updateStats(env, (doc) => {
   if (what === "cached") doc.ai.cached += 1;
   else if (what === "error") doc.ai.errors += 1;
   else if (what === "not_plant") doc.ai.notPlant += 1;
+  else if (what === "limit") doc.ai.limits = (doc.ai.limits ?? 0) + 1;
   else { doc.ai.calls += 1; doc.ai.ms += ms; }
+  const key = { cached: `${kind}_hit`, error: "error", limit: "limit", call: kind }[what];
+  if (request && kind && key) {
+    const row = ((doc.u ??= {})[usageId(request)] ??= {});
+    row[key] = (row[key] ?? 0) + 1;
+  }
 }).catch(() => {}));
 
 async function handleEvent(request, env, headers) {
@@ -398,7 +411,7 @@ async function handleStats(request, env, headers) {
   const n = Math.min(90, Math.max(1, Number(new URL(request.url).searchParams.get("days")) || 30));
   const days = [...Array(n).keys()].map((i) => new Date(Date.now() - (n - 1 - i) * 86400000).toISOString().slice(0, 10));
   const docs = await Promise.all(days.map((d) => env.CACHE.get(statsKey(d), "json")));
-  return json({ days: days.map((date, i) => ({ date, ...(docs[i] ?? { e: {}, d: [], ai: { calls: 0, cached: 0, errors: 0, notPlant: 0, ms: 0 } }) })) }, 200, headers);
+  return json({ days: days.map((date, i) => ({ date, ...(docs[i] ?? { e: {}, d: [], u: {}, ai: { calls: 0, cached: 0, errors: 0, notPlant: 0, ms: 0 } }) })) }, 200, headers);
 }
 
 async function handleCalendar(request, env, headers, ctx) {
@@ -413,9 +426,9 @@ async function handleCalendar(request, env, headers, ctx) {
 
   const cacheKey = `cal:v4:${normName(species || name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
-  if (cached) { recordAi(env, ctx, "cached"); return json({ ...cached, cached: true }, 200, headers); }
+  if (cached) { recordAi(env, ctx, "cached", 0, request, "calendar"); return json({ ...cached, cached: true }, 200, headers); }
 
-  if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
+  if (!(await takeQuota(request, env))) { recordAi(env, ctx, "limit", 0, request, "calendar"); return json({ error: "limit" }, 429, headers); }
 
   if (!chain(env).length) return json({ error: "provider" }, 500, headers);
   let cal;
@@ -425,10 +438,10 @@ async function handleCalendar(request, env, headers, ctx) {
     cal = { ...sanitizeCalendar(out), provider: from };
   } catch (err) {
     console.error("calendar failed", env.PROVIDER, err?.message);
-    recordAi(env, ctx, "error");
+    recordAi(env, ctx, "error", 0, request, "calendar");
     return json({ error: "ai" }, 502, headers);
   }
-  recordAi(env, ctx, "call", Date.now() - t0);
+  recordAi(env, ctx, "call", Date.now() - t0, request, "calendar");
   if (cal.tasks.length) await env.CACHE.put(cacheKey, JSON.stringify(cal), { expirationTtl: CACHE_TTL });
   return json(cal, 200, headers);
 }
@@ -644,7 +657,7 @@ const IDENTIFY_SCHEMA = {
   required: ["isPlant", "candidates"],
 };
 const IDENTIFY_MAX = 2.5 * 1024 * 1024; // base64 characters; the app sends ~900 px JPEGs
-async function handleIdentify(request, env, headers) {
+async function handleIdentify(request, env, headers, ctx) {
   if (!authorized(request, env)) return json({ error: "code" }, 401, headers);
   const text = await request.text();
   if (text.length > IDENTIFY_MAX + 2000) return json({ error: "too_big" }, 413, headers);
@@ -653,7 +666,7 @@ async function handleIdentify(request, env, headers) {
   const image = String(body.image ?? "");
   if (!/^[A-Za-z0-9+/=]+$/.test(image) || image.length < 200 || image.length > IDENTIFY_MAX) return json({ error: "input" }, 400, headers);
   const place = String(body.place ?? "").slice(0, 60);
-  if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
+  if (!(await takeQuota(request, env))) { recordAi(env, ctx, "limit", 0, request, "identify"); return json({ error: "limit" }, 429, headers); }
   const prompt = `Identifica la planta de esta foto. Responde en español. Da de 1 a 3 candidatos, del más al menos probable, con su nombre común en español y su nombre científico, y tu seguridad (alta, media o baja). La persona vive en ${place || "España"} (clima mediterráneo): si dudas entre especies, prefiere las comunes en jardines y terrazas de la zona. Si la foto no muestra una planta o no se puede distinguir cuál es, pon isPlant en false o devuelve confianza "baja".`;
   const t0 = Date.now();
   for (const spec of chain(env).filter((c) => c.startsWith("gemini"))) {
@@ -676,13 +689,14 @@ async function handleIdentify(request, env, headers) {
         species: String(c.species ?? "").slice(0, 80),
         confidence: ["alta", "media", "baja"].includes(c.confidence) ? c.confidence : "baja",
       })).filter((c) => c.commonName && c.species);
-      await updateStats(env, (doc) => { doc.ai ??= {}; doc.ai.identify = (doc.ai.identify ?? 0) + 1; });
+      recordAi(env, ctx, "call", Date.now() - t0, request, "identify");
       console.log("identify ok", spec, Date.now() - t0, "ms");
       return json({ isPlant: parsed.isPlant !== false && candidates.length > 0, candidates }, 200, headers);
     } catch (err) {
       console.error("identify failed", spec, err?.message);
     }
   }
+  recordAi(env, ctx, "error", 0, request, "identify");
   return json({ error: "ai" }, 502, headers);
 }
 
@@ -702,7 +716,7 @@ export default {
     if (pathname === "/calendar" && request.method === "POST") return handleCalendar(request, env, headers, ctx);
     if (pathname === "/event" && request.method === "POST") return handleEvent(request, env, headers);
     if (pathname === "/stats") return handleStats(request, env, headers);
-    if (pathname === "/identify" && request.method === "POST") return handleIdentify(request, env, headers);
+    if (pathname === "/identify" && request.method === "POST") return handleIdentify(request, env, headers, ctx);
     const push = pathname.match(/^\/push\/(subscribe|unsubscribe|test)$/);
     if (push && request.method === "POST") return handlePush(request, env, headers, push[1]);
     const garden = pathname.match(/^\/garden\/([^/]+)$/);

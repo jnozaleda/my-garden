@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003e";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003f";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261003e";
-import { buildICS } from "./calendar.js?v=20261003e";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003e";
+} from "./rules.js?v=20261003f";
+import { buildICS } from "./calendar.js?v=20261003f";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003f";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -598,6 +598,20 @@ function usageSheet() {
     return `<span class="u-bar ${opens[i] ? "" : "zero"}" style="height:${Math.max(3, (opens[i] / max) * 100)}%" tabindex="0" title="${esc(label)}" aria-label="${esc(label)}"></span>`;
   }).join("");
   const total = ai.calls + ai.cached;
+  // AI use per garden (g = synced garden, d = a phone that isn't synced): real calls by kind, and memory hits.
+  const gardens = (() => {
+    const rows = {};
+    for (const d of days) for (const [id, r] of Object.entries(d.u ?? {})) { const t = (rows[id] ??= {}); for (const [k, n] of Object.entries(r)) t[k] = (t[k] ?? 0) + n; }
+    const sum = (r, ...keys) => keys.reduce((a, k) => a + (r[k] ?? 0), 0);
+    const counters = { g: 0, d: 0 };
+    return Object.entries(rows).map(([id, r]) => ({
+      id, ficha: sum(r, "care", "care_edit", "care_upgrade"), explorar: sum(r, "care_explore"), calendario: sum(r, "calendar"), foto: sum(r, "identify"),
+      calls: sum(r, "care", "care_edit", "care_upgrade", "care_explore", "calendar", "identify"),
+      hits: sum(r, "care_hit", "care_edit_hit", "care_upgrade_hit", "care_explore_hit", "calendar_hit"), limit: sum(r, "limit"), errors: sum(r, "error"),
+    })).sort((a, b) => b.calls - a.calls || b.hits - a.hits).map((g) => ({ ...g, label: g.id === "anon" ? "Versión antigua" : `${g.id[0] === "g" ? "Jardín" : "Móvil"} ${String.fromCharCode(65 + counters[g.id[0]]++)}${g.id === usageId ? " (tú)" : ""}` }));
+  })();
+  const known = gardens.filter((g) => g.id !== "anon");
+  const gardenCalls = known.reduce((a, g) => a + g.calls, 0);
   const row = (icon, label, n, small = "") => `<div class="u-row">${ICONS[icon]}<span>${label}</span><b>${n}${small ? `<small>${small}</small>` : ""}</b></div>`;
   openSheet(`${head}
     <section class="card"><div class="sec">Dispositivos activos</div>
@@ -617,6 +631,9 @@ function usageSheet() {
       ${row("database", "Desde la memoria (gratis)", ai.cached, total ? `${Math.round((ai.cached / total) * 100)} %` : "")}
       ${row("clock", "Tiempo medio de respuesta", ai.calls ? `${Math.round(ai.ms / ai.calls / 1000)} s` : "—")}
       ${row("alert", "Errores", ai.errors + ai.notPlant, ai.notPlant ? `${ai.notPlant} «no es una planta»` : "")}</section>
+    ${gardens.length ? `<section class="card"><div class="sec">IA por jardín <span class="meta ai-mark">✦ 30 días</span></div>
+      ${gardens.map((g) => `<div class="u-row"><span class="u-garden">${esc(g.label)}</span><b>${g.calls}<small>${[g.ficha && `${g.ficha} ficha`, g.calendario && `${g.calendario} calendario`, g.foto && `${g.foto} foto`, g.explorar && `${g.explorar} explorar`, g.hits && `${g.hits} de memoria`, g.limit && `${g.limit} sin cupo`, g.errors && `${g.errors} error`].filter(Boolean).join(" · ") || "sin consultas"}</small></b></div>`).join("")}
+      <div class="u-row"><span class="u-garden">Media por jardín</span><b>${(known.length ? gardenCalls / known.length : 0).toFixed(1)}<small>consultas reales (las de memoria no cuestan)</small></b></div></section>` : ""}
     <p class="group-foot">Recuentos anónimos: sin nombres de plantas, notas, ubicación ni datos personales. Cada instalación cuenta como un dispositivo. Los datos empiezan el 2 de octubre de 2026.</p>`, "usage");
 }
 // Tap or hover a bar to read its day.
@@ -742,7 +759,7 @@ async function upgradePlants() {
       const missing = missingUpgrades(plant);
       const careUps = missing.filter((u) => u.source !== "calendar");
       if (careUps.length) {
-        const care = await requestCare(plant.name);
+        const care = await requestCare(plant.name, "upgrade");
         for (const u of careUps) u.apply(plant, care);
         if (!plant.species) plant.species = care.species;
         if (!plant.notes) plant.notes = care.notes;
@@ -1121,12 +1138,20 @@ const altQuery = (a) => `${a.commonName} (${a.species})`;
 let aiOpen = null;
 const aiCode = () => store.get("mj_ai_code", "");
 const hasAI = () => aiOpen === true || Boolean(aiCode());
-const aiHeaders = () => ({ "Content-Type": "application/json", ...(aiCode() ? { "X-Access-Code": aiCode() } : {}) });
+const aiHeaders = () => ({ "Content-Type": "application/json", ...(aiCode() ? { "X-Access-Code": aiCode() } : {}), ...(usageId ? { "X-Usage": usageId } : {}) });
+// Anonymous id for the Worker's usage counters: a hash of the garden key when synced, else of this
+// device. It's hashed here with its own prefix, so the garden key itself is never sent with AI requests.
+let usageId = null;
+async function refreshUsageId() {
+  const sha = async (text) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  const key = store.get("mj_sync", null)?.key;
+  usageId = key ? `g:${await sha(`usage:${key}`)}` : `d:${await sha(`usage:${store.get("mj_device", "")}`)}`;
+}
 fetch(`${API}/health`).then((r) => r.json()).then((h) => { aiOpen = h.code === false; render(); }).catch(() => {});
 
 // Resolves to the care sheet, or throws an Error whose message is a key of AI_ERRORS
 // ("code", "limit") or "timeout" / "network" / "ai".
-async function requestCare(name) {
+async function requestCare(name, src = "") {
   if (aiOpen === false && !aiCode()) throw new Error("code");
   const loc = state.loc ?? DEFAULT_LOC;
   let res;
@@ -1135,7 +1160,7 @@ async function requestCare(name) {
       method: "POST",
       signal: AbortSignal.timeout(50000),
       headers: aiHeaders(),
-      body: JSON.stringify({ name, lat: loc.lat, lon: loc.lon, place: loc.name }),
+      body: JSON.stringify({ name, lat: loc.lat, lon: loc.lon, place: loc.name, src }),
     });
   } catch (err) {
     throw new Error(err?.name === "TimeoutError" ? "timeout" : "network");
@@ -1210,7 +1235,7 @@ async function aiFill(query) {
   card.classList.remove("done");
   card.classList.add("ai-halo", "loading");
   try {
-    const care = await requestCare(query ?? name);
+    const care = await requestCare(query ?? name, "edit");
     const f = form.elements;
     f.species.value = care.species;
     for (const k of SEASONS) {
@@ -1509,7 +1534,7 @@ async function exploreLookup(query, name = query, photo = null) {
   exploreSheet();
   const current = explore;
   try {
-    const care = await requestCare(query);
+    const care = await requestCare(query, "explore");
     if (explore !== current) return;
     const today = localToday();
     const report = fitReport(care, state.data.plants, zoneSun(), seasonOf(today, here().lat), here().name);
@@ -1846,6 +1871,7 @@ const actions = {
       if (!syncKey()) {
         for (const item of [...state.data.plants, ...state.data.log]) item._at ??= Date.now();
         store.set("mj_sync", { key: newKey() });
+        await refreshUsageId();
         await pushNow();
       }
       if ((await Notification.requestPermission()) !== "granted") return pushSheet("Sin permiso no se pueden enviar avisos. Puedes darlo en los ajustes del móvil, en Notificaciones.");
@@ -1879,6 +1905,7 @@ const actions = {
     const key = newKey();
     for (const item of [...state.data.plants, ...state.data.log]) item._at ??= Date.now();
     store.set("mj_sync", { key });
+    await refreshUsageId();
     syncSheet("Activando…");
     await pushNow();
     syncSheet();
@@ -1898,6 +1925,7 @@ const actions = {
   "sync-off": () => {
     if (!confirm("¿Dejar de sincronizar en este móvil? Tus plantas se quedan aquí, pero los cambios ya no llegarán a los otros móviles.")) return;
     localStorage.removeItem("mj_sync");
+    refreshUsageId();
     render();
     syncSheet();
   },
@@ -1905,6 +1933,7 @@ const actions = {
     const remote = joinRemote;
     if (!remote) return;
     store.set("mj_sync", { key: d.key });
+    await refreshUsageId();
     if ($("joinReplace")?.checked) {
       store.set("mj_backup_before_join", state.data);
       state.data = { ...state.data, ...gardenDoc(remote) };
@@ -2134,6 +2163,7 @@ document.addEventListener("visibilitychange", () => {
 // ---------- Start ----------
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 render();
+refreshUsageId();
 // A shared-garden link (#jardin=KEY) opens the join sheet; otherwise bring the synced garden down.
 {
   const linked = parseKey(new URLSearchParams(location.hash.slice(1)).get("jardin"));
