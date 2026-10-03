@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003c";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003d";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261003c";
-import { buildICS } from "./calendar.js?v=20261003c";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003c";
+} from "./rules.js?v=20261003d";
+import { buildICS } from "./calendar.js?v=20261003d";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003d";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.

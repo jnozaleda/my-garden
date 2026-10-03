@@ -37,7 +37,11 @@ function hash(str) {
   for (let i = 0; i < str.length; i++) h = (h * 33) ^ str.charCodeAt(i);
   return (h >>> 0).toString(36);
 }
-const itemHash = (item) => hash(JSON.stringify({ ...item, _at: undefined }));
+// Fields the app fills in by itself (timestamps, reference photo, derived irrigation state) aren't
+// edits: counting them would stamp every plant as «changed now» on any phone that merely opened the
+// app, and its stale copy would then win over a real edit made on another phone.
+const DERIVED = new Set(["_at", "irrigationOff", "irrigationOffSince", "refPhoto"]);
+const itemHash = (item) => hash(JSON.stringify(Object.fromEntries(Object.entries(item).filter(([k]) => !DERIVED.has(k)))));
 export function hashesOf(data) {
   const out = { settings: hash(JSON.stringify([data.pausedZones ?? [], data.zoneSun ?? {}])) };
   for (const item of [...data.plants, ...data.log]) out[item.id] = itemHash(item);
