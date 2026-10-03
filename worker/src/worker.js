@@ -1,4 +1,4 @@
-import { dueTasks, weatherAlerts, weatherChecks, plantLabel } from "../../app/rules.js";
+import { dueTasks, weatherAlerts, weatherChecks, plantLabel, monthTasks, groupGardenTasks } from "../../app/rules.js";
 import { fetchWeather } from "../../app/weather.js";
 // my-garden-api — the app's small backend. For now one job: fill in a plant's care sheet from
 // its name ("✨ Rellenar con IA"). The AI provider is a setting (PROVIDER) so moving from the free
@@ -552,6 +552,9 @@ function dailyMessage(garden, weather, today, lat) {
   for (const a of alerts) lines.push(`${a.icon} ${a.title}`);
   for (const c of checks) lines.push(c.title);
   if (!lines.length) return null;
+  // The week's checklist («Esta semana en el jardín»): how many jobs are still open.
+  const week = groupGardenTasks(monthTasks(plants, garden.log ?? [], today)).filter((x) => !x.done).length;
+  if (week) lines.push(`Esta semana: ${week === 1 ? "1 tarea pendiente" : `${week} tareas pendientes`}`);
   const n = tasks.length;
   return { title: n ? `Hoy en el jardín: ${n === 1 ? "1 tarea" : `${n} tareas`}` : "Aviso del tiempo para el jardín", body: lines.join("\n"), url: "./" };
 }

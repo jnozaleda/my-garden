@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002w";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002x";
 import {
-  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel,
-} from "./rules.js?v=20261002w";
-import { buildICS } from "./calendar.js?v=20261002w";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261002w";
+  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks,
+} from "./rules.js?v=20261002x";
+import { buildICS } from "./calendar.js?v=20261002x";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261002x";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -164,27 +164,6 @@ function windowLabel(w) {
 
 // «Esta semana en el jardín»: weather checks with plant names, then this month's tasks for all plants.
 let weekAll = false;
-// Garden-wide jobs (clean, mulch, protect from cold) are done for every plant at once, so the
-// week card shows one row per type with all its plants; one tick logs it on each. Pruning,
-// repotting, treating and harvesting stay per plant.
-const GROUPED_TYPES = { clean: "Limpiar hojas secas y flores marchitas", mulch: "Acolchar", protect: "Proteger del frío" };
-function groupGardenTasks(items) {
-  const out = [];
-  const groups = {};
-  for (const x of items) {
-    const type = x.task.type;
-    if (!GROUPED_TYPES[type]) { out.push({ members: [x], title: x.task.title, how: x.task.how, window: x.window, done: x.done }); continue; }
-    if (!groups[type]) out.push(groups[type] = { members: [], how: x.task.how, type });
-    groups[type].members.push(x);
-  }
-  for (const g of Object.values(groups)) {
-    g.title = g.members.length > 1 ? GROUPED_TYPES[g.type] : g.members[0].task.title;
-    g.done = g.members.every((m) => m.done);
-    g.window = g.members.reduce((a, m) => (m.window.lastMonth < a.lastMonth ? m.window : a), g.members[0].window);
-  }
-  return out.sort((a, b) => a.done - b.done);
-}
-
 // Ticks a grouped row: if every plant has it done, undo all; otherwise log it on those missing.
 function toggleTasks(refs) {
   const today = localToday();
