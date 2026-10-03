@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003d";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003e";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261003d";
-import { buildICS } from "./calendar.js?v=20261003d";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003d";
+} from "./rules.js?v=20261003e";
+import { buildICS } from "./calendar.js?v=20261003e";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003e";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -109,10 +109,11 @@ function traits(p) {
   const level = !every ? 0 : every <= 3 ? 3 : every <= 7 ? 2 : 1;
   const drops = level ? `<span class="t-drops" aria-label="Riego ${["", "bajo", "medio", "alto"][level]}">${[1, 2, 3].map((i) => `<span class="${i <= level ? "on" : ""}">${ICONS.droplet}</span>`).join("")}</span>` : "";
   const frost = p.frostSensitive ? `<span class="t-frost" aria-label="Sensible a heladas">${ICONS.snow}</span>` : "";
-  // Light it tolerates as 1–3 suns (shade = 1, partial = 2, full sun = 3); a plant that burns in direct sun is 1.
-  const sunLevel = !p.sunNeed ? 0 : p.sunSensitive ? 1 : { shade: 1, partial: 2, sun: 3 }[p.sunNeed] ?? 0;
-  const suns = sunLevel ? `<span class="t-suns" aria-label="Luz: ${p.sunSensitive ? "sensible al sol directo" : SUN_NEED_LABEL[p.sunNeed]}">${[1, 2, 3].map((i) => `<span class="${i <= sunLevel ? "on" : ""}">${ICONS.sun}</span>`).join("")}</span>` : "";
-  return drops || suns || frost ? `<span class="p-traits">${drops}${suns || frost ? `<span class="t-line">${suns}${frost}</span>` : ""}</span>` : "";
+  // Light it asks for, with the same icons as the selector in Editar: sun, cloud (partial shade), umbrella (shade).
+  // A plant that burns in direct sun needs shade whatever else it says.
+  const need = !p.sunNeed ? null : p.sunSensitive ? "shade" : p.sunNeed;
+  const light = need ? `<span class="t-light" aria-label="${p.sunSensitive ? "Sensible al sol directo: sombra" : `Pide ${SUN_NEED_LABEL[need]}`}">${ICONS[LIGHT_ICON[need]]}</span>` : "";
+  return drops || light || frost ? `<span class="p-traits">${drops}${light || frost ? `<span class="t-line">${light}${frost}</span>` : ""}</span>` : "";
 }
 
 function emptyGarden() {
@@ -877,8 +878,8 @@ function plantSheet(id) {
     p.rainReaches ? ["rain", "Le llega la lluvia"] : ["umbrella", "A cubierto"],
     p.frostSensitive ? ["snow", "Sensible a heladas"] : null,
     p.autoWater ? ["drip", p.irrigationOff ? "Riego automático (pausado)" : "Riego automático"] : null,
-    p.sunNeed ? ["sun", `Pide ${SUN_NEED_LABEL[p.sunNeed]}`] : null,
-    exposureOf(p, zoneSun()) ? ["sun", `Recibe ${SUN_LABEL[exposureOf(p, zoneSun())].toLowerCase()}`] : null,
+    p.sunNeed ? [LIGHT_ICON[p.sunNeed], `Pide ${SUN_NEED_LABEL[p.sunNeed]}`] : null,
+    exposureOf(p, zoneSun()) ? [LIGHT_ICON[exposureOf(p, zoneSun())], `Recibe ${SUN_LABEL[exposureOf(p, zoneSun())].toLowerCase()}`] : null,
     p.size ? ["sprout", `Tamaño ${SIZE_LABEL[p.size].toLowerCase()}`] : null,
   ].filter(Boolean);
   const sunWarn = sunAdvice(p, zoneSun());
@@ -1544,6 +1545,8 @@ async function exploreFromFile(file) {
 // «Zona» = the sun set for its zone in Ajustes.
 const SUN_CHOICES = [["", "pin", "Zona"], ["sun", "sun", "Sol"], ["partial", "cloud", "Media"], ["shade", "umbrella", "Sombra"]];
 const SUN_NEED_CHOICES = [["sun", "sun", "Sol"], ["partial", "cloud", "Media"], ["shade", "umbrella", "Sombra"]];
+// Same icons everywhere light is shown (selector, list, sheet).
+var LIGHT_ICON = { sun: "sun", partial: "cloud", shade: "umbrella" };
 const SIZE_CHOICES = [["small", "sprout", "Pequeña"], ["medium", "sprout", "Mediana"], ["large", "sprout", "Grande"]];
 const SIZE_LABEL = { small: "Pequeña", medium: "Mediana", large: "Grande" };
 
