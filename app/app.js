@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002z";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003a";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks,
-} from "./rules.js?v=20261002z";
-import { buildICS } from "./calendar.js?v=20261002z";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261002z";
+} from "./rules.js?v=20261003a";
+import { buildICS } from "./calendar.js?v=20261003a";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003a";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -1352,7 +1352,7 @@ function identifyBlock() {
     return `<label class="card id-cta">${ICONS.camera}<div><b>¿No sabes cómo se llama?</b><span class="muted small">Hazle una foto (mejor de cerca a una hoja o una flor) o elige una de tu galería.</span></div>${pick}</label>`;
   }
   if (id.state === "loading") {
-    return `<section class="card"><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Mirando la foto…</div></section>`;
+    return `<section class="card"><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Mirando la foto: unos segundos…</div></section>`;
   }
   if (id.state !== "done") {
     return `<section class="card"><b>${id.state === "none" ? "La foto no me basta para saber qué planta es" : "No he podido mirar la foto"}</b>
@@ -1418,7 +1418,9 @@ function renderWizard() {
         <div class="photo-pick"><span id="photoPreview">${draftPhoto ? `<img src="${draftPhoto}" alt="" />` : `<span class="thumb placeholder">${ICONS.camera}</span>`}</span>
           <label class="btn small secondary">Añadir foto<input type="file" id="photoInput" accept="image/*" hidden /></label></div>
         <p class="muted">${hasCode ? `<span class="ai-mark">✦</span> Con el nombre, la IA propondrá sus cuidados por estación para tu zona.` : "Activa el asistente IA en Ajustes para que proponga los cuidados."}</p>
-        <button class="btn block" type="submit">Siguiente</button>
+        ${wiz.identify?.state === "loading"
+          ? `<button class="btn block" type="submit" disabled aria-busy="true"><span class="spinner" aria-hidden="true"></span> Mirando la foto…</button>`
+          : `<button class="btn block" type="submit">Siguiente</button>`}
       </form>
       ${hasCode ? identifyBlock() : ""}`);
     setTimeout(() => $("wizName")?.elements.name.focus(), 50);
@@ -1861,6 +1863,7 @@ document.addEventListener("submit", (e) => {
   }
   if (e.target.id === "wizName") {
     e.preventDefault();
+    if (wiz.identify?.state === "loading") return;
     const name = new FormData(e.target).get("name").trim();
     if (!name) return;
     const changed = name !== wiz.name;
