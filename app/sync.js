@@ -21,13 +21,14 @@ export function mergeGardens(a, b) {
     log: merge(a.log, b.log),
     deleted,
     pausedZones: settings.pausedZones ?? [],
+    zoneSun: settings.zoneSun ?? {},
     settingsAt: settings.settingsAt ?? 0,
   };
 }
 
 // The part of the app's data that syncs (location and view choices stay per phone).
 export const gardenDoc = (data) => ({
-  plants: data.plants, log: data.log, deleted: data.deleted ?? {}, pausedZones: data.pausedZones ?? [], settingsAt: data.settingsAt ?? 0,
+  plants: data.plants, log: data.log, deleted: data.deleted ?? {}, pausedZones: data.pausedZones ?? [], zoneSun: data.zoneSun ?? {}, settingsAt: data.settingsAt ?? 0,
 });
 
 // Cheap content hash (without `_at`) to notice what changed since the last save.
@@ -38,7 +39,7 @@ function hash(str) {
 }
 const itemHash = (item) => hash(JSON.stringify({ ...item, _at: undefined }));
 export function hashesOf(data) {
-  const out = { settings: hash(JSON.stringify(data.pausedZones ?? [])) };
+  const out = { settings: hash(JSON.stringify([data.pausedZones ?? [], data.zoneSun ?? {}])) };
   for (const item of [...data.plants, ...data.log]) out[item.id] = itemHash(item);
   return out;
 }

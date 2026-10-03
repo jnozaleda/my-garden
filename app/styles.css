@@ -630,3 +630,31 @@ dialog#sheet { touch-action: pan-y; }
 .conf.media, .conf.baja { background: #3a2c14; color: #f0b45a; }
 label.btn.block { display: block; text-align: center; cursor: pointer; }
 label.link-btn { cursor: pointer; }
+
+/* Sun, size, add menu and Explorar */
+.zone-sun-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-top: 0.5px solid var(--hairline); }
+.zone-sun-row:first-child { border-top: 0; }
+.seg.mini { margin: 0; flex: none; }
+.seg.mini button { padding: 5px 9px; font-size: 12.5px; }
+.sun-warn { display: flex; gap: 8px; align-items: center; font-size: 13.5px; border-radius: 12px; padding: 9px 12px; margin: 0; background: #3a2c14; color: #f0b45a; }
+.sun-warn.no { background: #3a1a17; color: #ff8a80; }
+.sun-warn svg { width: 16px; height: 16px; flex: none; }
+.menu-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px; background: var(--card); border-radius: 14px; margin-top: 8px; }
+.menu-row small { display: block; color: var(--text-2); font-size: 12.5px; }
+.menu-ic { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+.menu-ic.add { background: #1f8f4e33; color: var(--accent); }
+.menu-ic.explore { background: #3b82f633; color: #5aa9e6; }
+.menu-ic svg { width: 20px; height: 20px; }
+.verdict { display: flex; flex-direction: column; gap: 2px; border-radius: 14px; padding: 12px 14px; margin-top: 10px; }
+.verdict.good { background: #16301f; } .verdict.mid { background: #3a2c14; } .verdict.bad { background: #3a1a17; }
+.verdict span { font-size: 13.5px; color: var(--text-2); line-height: 1.4; }
+.fit-row { display: flex; gap: 10px; padding: 9px 0; border-top: 0.5px solid var(--hairline); align-items: flex-start; }
+.fit-row:first-child { border-top: 0; }
+.fit-row > div { display: flex; flex-direction: column; gap: 1px; }
+.fit-row span { font-size: 13px; color: var(--text-2); line-height: 1.4; }
+.fit-ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none; }
+.fit-ic svg { width: 15px; height: 15px; }
+.fit-ic.ok { background: #16301f; color: #6cc47a; } .fit-ic.warn { background: #3a2c14; color: #f0b45a; }
+.fit-ic.no { background: #3a1a17; color: #ff6b5e; } .fit-ic.info { background: var(--hairline); color: var(--text-2); }
+.verdict-dot { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.verdict-dot.good { color: #6cc47a; } .verdict-dot.mid { color: #f0b45a; } .verdict-dot.bad { color: #ff6b5e; }

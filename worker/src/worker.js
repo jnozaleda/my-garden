@@ -28,6 +28,11 @@ const CARE_SCHEMA = {
       [`tip_${k}`, { type: "string", description: `Una frase corta (menos de 140 caracteres) con lo más importante en ${SEASON_ES[k]} para esta planta en ese clima` }],
     ])),
     frostSensitive: { type: "boolean", description: "Si sufre con temperaturas bajo 0 °C" },
+    sunNeed: { type: "string", enum: ["sol", "media_sombra", "sombra"], description: "Luz que pide en exterior: sol (6 h o más de sol directo), media_sombra (sol suave o unas horas) o sombra" },
+    sunSensitive: { type: "boolean", description: "true solo si el sol directo le quema o la perjudica claramente y debe estar en sombra o media sombra (helechos, hostas, aspidistra, begonias…)" },
+    minTemp: { type: "integer", minimum: -40, maximum: 25, description: "Temperatura mínima que aguanta, en °C (p. ej. 5 para una planta que sufre con 5 °C, -15 para una muy resistente)" },
+    climateFit: { type: "string", enum: ["bien", "reservas", "mal"], description: "Cómo se adapta al clima de ESE lugar en exterior todo el año (frío, calor, sequedad o humedad): bien, reservas (necesita cuidados o protección) o mal (no es viable allí en exterior)" },
+    climateNote: { type: "string", description: "Una frase corta (menos de 140 caracteres) sobre cómo le va en ese lugar: heladas, calor, qué protección necesita" },
     notes: { type: "string", description: "Entre 2 y 4 frases cortas (menos de 350 caracteres) sobre ESTA planta válidas todo el año: luz, cuándo podar, plagas habituales. Sin meses concretos ni frecuencias de riego" },
     confidence: { type: "string", enum: ["alta", "media", "baja"], description: "baja si no reconoces bien la planta" },
     alternatives: {
@@ -40,7 +45,7 @@ const CARE_SCHEMA = {
       },
     },
   },
-  required: ["isPlant", "alternatives", "commonName", "species", ...SEASONS.flatMap((k) => [`water_${k}`, `feed_${k}`, `feedtype_${k}`, `tip_${k}`]), "frostSensitive", "notes", "confidence"],
+  required: ["isPlant", "alternatives", "commonName", "species", ...SEASONS.flatMap((k) => [`water_${k}`, `feed_${k}`, `feedtype_${k}`, `tip_${k}`]), "frostSensitive", "sunNeed", "sunSensitive", "minTemp", "climateFit", "climateNote", "notes", "confidence"],
   additionalProperties: false,
 };
 
@@ -59,8 +64,9 @@ const CALENDAR_SCHEMA = {
           title: { type: "string", description: "La acción en pocas palabras, empezando por un verbo en infinitivo (p. ej. «Podar ramas secas», «Tratar contra la cochinilla», «Acolchar la base»)" },
           how: { type: "string", description: "Cómo hacerlo en una frase corta (menos de 120 caracteres)" },
           months: { type: "array", items: { type: "integer", minimum: 1, maximum: 12 }, description: "Meses del año (1-12) en que toca, para ese hemisferio" },
+          matureOnly: { type: "boolean", description: "true si solo aplica a un ejemplar adulto y asentado (aclarar frutos, cosechar, podas de fructificación…) y no a uno pequeño o joven" },
         },
-        required: ["type", "title", "how", "months"], additionalProperties: false,
+        required: ["type", "title", "how", "months", "matureOnly"], additionalProperties: false,
       },
     },
     risks: {
@@ -81,6 +87,8 @@ function calendarMessages({ name, species, place, lat }) {
         "ajustado al clima del lugar (meses del hemisferio indicado). Sin riego ni abonado: van aparte. Solo acciones " +
         "concretas que se hacen y se pueden marcar como hechas, empezando por un verbo: podar, trasplantar, tratar " +
         "contra una plaga concreta, acolchar, proteger del frío, limpiar hojas secas, cosechar. Nunca fases del año. " +
+        "Marca matureOnly en las tareas que solo tienen sentido en un ejemplar adulto y asentado (aclarar frutos o uvas, " +
+        "cosechar, podas de fructificación): una planta pequeña o joven no las necesita. " +
         "Responde siempre en español.",
     },
     {
@@ -110,7 +118,10 @@ function careMessages({ name, place, lat, lon }) {
         "Trachelospermum jasminoides…), rellena la ficha de la más habitual en jardines y terrazas de España y pon las " +
         "demás en alternatives. En tasks pon solo acciones concretas que el jardinero pueda hacer y marcar como hechas, " +
         "con los meses en que tocan en ese clima; por ejemplo, para un cítrico: tratar contra la cochinilla, podar " +
-        "ramas secas tras la cosecha, proteger del frío en las heladas. Responde siempre en español.",
+        "ramas secas tras la cosecha, proteger del frío en las heladas. " +
+        "Indica también la luz que pide (sunNeed), si el sol directo la perjudica y debe estar en sombra (sunSensitive: " +
+        "solo plantas realmente de sombra), la temperatura mínima que aguanta, y cómo se adapta al clima de ese lugar " +
+        "(climateFit y una frase en climateNote: heladas, calor, protección necesaria). Responde siempre en español.",
     },
     {
       role: "user",
@@ -212,6 +223,7 @@ function sanitizeCalendar(c) {
           title,
           how: clipSentences(str(t?.how, 300), 140),
           months: [...new Set((Array.isArray(t?.months) ? t.months : []).map(Number).filter((m) => m >= 1 && m <= 12))].sort((a, b) => a - b),
+          matureOnly: t?.matureOnly === true || t?.matureOnly === "true",
         };
       })
       // Watering and feeding already have their own seasonal table.
@@ -244,6 +256,11 @@ function sanitize(c) {
     feedTypes: Object.fromEntries(SEASONS.map((k) => [k, feedDays(int(c[`feed_${k}`], 0, 365, 0)) ? str(c[`feedtype_${k}`], 90) : ""])),
     tips: Object.fromEntries(SEASONS.map((k) => [k, clipSentences(str(c[`tip_${k}`], 400), 160)])),
     frostSensitive: c.frostSensitive === true || c.frostSensitive === "true",
+    sunNeed: { sol: "sun", media_sombra: "partial", sombra: "shade" }[c.sunNeed] ?? "sun",
+    sunSensitive: c.sunSensitive === true || c.sunSensitive === "true",
+    minTemp: c.minTemp === null || c.minTemp === undefined || c.minTemp === "" || !Number.isFinite(Number(c.minTemp)) ? null : int(c.minTemp, -40, 25, null),
+    climateFit: { bien: "ok", reservas: "warn", mal: "no" }[c.climateFit] ?? "warn",
+    climateNote: clipSentences(str(c.climateNote, 300), 160),
     notes: clipSentences(str(c.notes, 2000), 600),
     confidence: ["alta", "media", "baja"].includes(c.confidence) ? c.confidence : "baja",
     alternatives: (Array.isArray(c.alternatives) ? c.alternatives : [])
@@ -314,7 +331,7 @@ async function handleCare(request, env, headers, ctx) {
   const place = String(body.place ?? "").slice(0, 60);
 
   // Same plant, same climate cell (~100 km) → same answer, whatever the month.
-  const cacheKey = `care:v12:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
+  const cacheKey = `care:v13:${normName(name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) { recordAi(env, ctx, "cached"); return json({ ...withLegacy(cached, body.month, lat), cached: true }, 200, headers); }
 
@@ -341,7 +358,7 @@ async function handleCare(request, env, headers, ctx) {
 // One KV document per day: { e: { event: count }, d: [device hashes], ai: { calls, cached, errors, notPlant, ms } }.
 // Anonymous counts only: the app sends event names and a random per-install id (hashed here).
 // Read-modify-write, so two writes at the same instant may lose one count: fine for a family app.
-const EVENTS = ["app_open", "plant_add_ai", "plant_add_manual", "water_done", "water_skip_rain", "feed_done", "task_done", "upgrade_done", "ai_fill_edit", "plant_identify"];
+const EVENTS = ["app_open", "plant_add_ai", "plant_add_manual", "water_done", "water_skip_rain", "feed_done", "task_done", "upgrade_done", "ai_fill_edit", "plant_identify", "plant_explore", "plant_duplicate"];
 const statsKey = (day = new Date().toISOString().slice(0, 10)) => `stats:${day}`;
 async function hashId(id) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`mj:${id}`));
@@ -394,7 +411,7 @@ async function handleCalendar(request, env, headers, ctx) {
   if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: "input" }, 400, headers);
   const place = String(body.place ?? "").slice(0, 60);
 
-  const cacheKey = `cal:v3:${normName(species || name)}:${Math.round(lat)}:${Math.round(lon)}`;
+  const cacheKey = `cal:v4:${normName(species || name)}:${Math.round(lat)}:${Math.round(lon)}`;
   const cached = await env.CACHE.get(cacheKey, "json");
   if (cached) { recordAi(env, ctx, "cached"); return json({ ...cached, cached: true }, 200, headers); }
 
@@ -444,6 +461,7 @@ function mergeGardens(a, b) {
     log: merge(a.log, b.log),
     deleted,
     pausedZones: settings.pausedZones ?? [],
+    zoneSun: settings.zoneSun ?? {},
     settingsAt: settings.settingsAt ?? 0,
   };
 }

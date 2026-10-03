@@ -38,6 +38,7 @@ export function monthTasks(plants, log, today) {
   for (const plant of plants) {
     (plant.yearTasks ?? []).forEach((task, i) => {
       if (task.off) return; // «No aplica»: removed by the user
+      if (task.matureOnly && plant.size === "small") return; // thinning fruit etc. doesn't apply to a small plant
       const window = taskWindow(task.months, today);
       if (!window) return;
       const ref = `${plant.id}:${i}`;
@@ -67,6 +68,69 @@ export function groupGardenTasks(items) {
     g.window = g.members.reduce((a, m) => (m.window.lastMonth < a.lastMonth ? m.window : a), g.members[0].window);
   }
   return out.sort((a, b) => a.done - b.done);
+}
+
+// ---------- Sun ----------
+export const SUN_LABEL = { sun: "Sol", partial: "Media sombra", shade: "Sombra" };
+export const SUN_NEED_LABEL = { sun: "pleno sol", partial: "media sombra", shade: "sombra" };
+// The exposure a plant gets: its own choice, else its zone's («Sol de cada zona» in Ajustes).
+export const exposureOf = (plant, zoneSun = {}) => plant.sun || zoneSun[plant.zone || ""] || null;
+// How well an exposure suits what the plant asks for: "ok" | "warn" | "no" (null when unknown).
+export function sunFit(need, sensitive, exposure) {
+  if (!exposure) return null;
+  if (sensitive) return { sun: "no", partial: "warn", shade: "ok" }[exposure];
+  return ({ sun: { sun: "ok", partial: "warn", shade: "no" }, partial: { sun: "warn", partial: "ok", shade: "warn" }, shade: { sun: "no", partial: "warn", shade: "ok" } }[need ?? "sun"])[exposure];
+}
+// One line for the plant sheet when its light doesn't match, or null.
+export function sunAdvice(plant, zoneSun = {}) {
+  const exposure = exposureOf(plant, zoneSun);
+  const fit = sunFit(plant.sunNeed, plant.sunSensitive, exposure);
+  if (!fit || fit === "ok") return null;
+  const asks = `${plant.sunSensitive ? "Es muy sensible al sol directo" : `Pide ${SUN_NEED_LABEL[plant.sunNeed ?? "sun"]}`}`;
+  const move = plant.sunSensitive || plant.sunNeed === "shade" ? "sombra" : plant.sunNeed === "sun" ? "una zona más soleada" : "media sombra";
+  return { level: fit, text: `${asks} y recibe ${SUN_LABEL[exposure].toLowerCase()}: mejor en ${move}.` };
+}
+
+// «Explorar»: how a plant (its care sheet from the AI) fits the user's garden.
+// Returns { verdict: "good" | "mid" | "bad", headline, summary, rows: [{ kind, level, title, text }] }.
+export function fitReport(care, plants, zoneSun, season, place) {
+  const rows = [];
+  const names = (list) => list.map(plantLabel).join(", ").replace(/, ([^,]*)$/, " y $1");
+  const climate = [care.climateNote, care.minTemp != null ? `Aguanta hasta ${care.minTemp}°.` : ""].filter(Boolean).join(" ");
+  rows.push({ kind: "climate", level: care.climateFit ?? "warn", title: "Clima", text: climate || (care.frostSensitive ? "Sufre con las heladas." : "Sin problemas de clima.") });
+  const every = care.seasons?.[season]?.water;
+  if (every) {
+    const like = plants.filter((p) => { const e = intervalFor(p, "water", season); return e && Math.abs(e - every) <= 1; });
+    rows.push({
+      kind: "water", level: every <= 2 ? "warn" : "ok", title: "Agua",
+      text: `${every <= 2 ? "Muy exigente: riego casi diario en maceta" : `Riego cada ${every} días`} en ${SEASON_LABEL[season].toLowerCase()}.${like.length ? ` Parecido a ${names(like.slice(0, 3))}.` : ""}`,
+    });
+  }
+  const zones = [...new Set([...plants.map((p) => p.zone || ""), ...Object.keys(zoneSun)])].filter((z) => zoneSun[z]);
+  const zoneName = (z) => z || "Sin zona";
+  const fits = zones.map((z) => [z, sunFit(care.sunNeed, care.sunSensitive, zoneSun[z])]);
+  const okZ = fits.filter(([, f]) => f === "ok").map(([z]) => zoneName(z));
+  const warnZ = fits.filter(([, f]) => f === "warn").map(([z]) => zoneName(z));
+  const noZ = fits.filter(([, f]) => f === "no").map(([z]) => zoneName(z));
+  rows.push({
+    kind: "sun", level: !zones.length ? "info" : okZ.length ? "ok" : warnZ.length ? "warn" : "no", title: "Sol",
+    text: `Pide ${SUN_NEED_LABEL[care.sunNeed ?? "sun"]}${care.sunSensitive ? " y el sol directo le perjudica: mejor en sombra" : ""}.` +
+      (okZ.length ? ` Encaja en ${okZ.join(", ")}.` : "") + (!okZ.length && warnZ.length ? ` Con reservas en ${warnZ.join(", ")}.` : "") +
+      (noZ.length ? ` No encaja en ${noZ.join(", ")}.` : "") + (!zones.length ? " Indica el sol de tus zonas (Ajustes) para saber dónde encaja." : ""),
+  });
+  const genus = String(care.species ?? "").split(" ")[0].toLowerCase();
+  const kin = genus ? plants.filter((p) => String(p.species ?? "").split(" ")[0].toLowerCase() === genus) : [];
+  if (kin.length) rows.push({ kind: "similar", level: "ok", title: "Parecidas en tu jardín", text: `Ya tienes ${names(kin.slice(0, 3))}, de la misma familia.` });
+  const bad = rows.find((r) => r.kind === "climate")?.level === "no";
+  const concern = rows.find((r) => r.level === "warn" || r.level === "no");
+  const verdict = bad ? "bad" : concern ? "mid" : "good";
+  const where = place || "tu zona";
+  return {
+    verdict,
+    headline: { good: `Encaja bien en ${where}`, mid: `Encaja con reservas en ${where}`, bad: `No es buena idea en ${where}` }[verdict],
+    summary: concern ? concern.text : "No veo pegas con tu clima, tu luz ni lo que ya tienes.",
+    rows,
+  };
 }
 
 // Weather-driven checks for the week, beyond the alerts: rain spells (fungus, snails), cold

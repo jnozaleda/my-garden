@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003a";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003b";
 import {
-  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks,
-} from "./rules.js?v=20261003a";
-import { buildICS } from "./calendar.js?v=20261003a";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003a";
+  CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
+} from "./rules.js?v=20261003b";
+import { buildICS } from "./calendar.js?v=20261003b";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003b";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -366,6 +366,17 @@ function zonesCard() {
     }).join("")}</section>
     <p class="group-foot">Qué plantas tienen riego se marca en cada una (Editar). Aquí lo enciendes o lo pausas por zona: pausado, esas plantas vuelven a pedirte riego; encendido, solo te avisamos si la lluvia o el calor piden tocar el programador.</p>`;
 }
+// Sun of each zone (Ajustes → «Sol de cada zona»): used to check a plant's light and by Explorar.
+const zoneSun = () => state.data.zoneSun ?? {};
+function zoneSunCard() {
+  const zones = [...new Set(state.data.plants.map((p) => p.zone || ""))].sort((a, b) => a.localeCompare(b, "es"));
+  if (!zones.length) return "";
+  return `<div class="group-title">Sol de cada zona</div>
+    <section class="card list-card settings">${zones.map((z) => `<div class="zone-sun-row"><span class="l-label">${esc(z || "Sin zona")}</span>
+      <div class="seg mini" role="radiogroup" aria-label="Sol en ${esc(z || "Sin zona")}">${[["sun", "Sol"], ["partial", "Media sombra"], ["shade", "Sombra"]].map(([v, t]) =>
+        `<button type="button" role="radio" aria-checked="${zoneSun()[z] === v}" data-action="zone-sun" data-zone="${esc(z)}" data-sun="${v}">${t}</button>`).join("")}</div></div>`).join("")}</section>
+    <p class="group-foot">Cuánta luz recibe cada zona. Sirve para avisarte si una planta no está donde le conviene y para decirte dónde encajaría una planta nueva. Toca otra vez para quitarlo. Cada planta puede tener su propio valor en Editar.</p>`;
+}
 // The next season's interval, so the timer can be changed in time.
 function autoHint(p, season) {
   const next = SEASONS[(SEASONS.indexOf(season) + 1) % 4];
@@ -524,6 +535,7 @@ function moreView() {
       ${pending || upgrade ? row("open-upgrades", "refresh", "#c7771a", "Fichas por actualizar", pending ? `<span class="dot"></span>${pending}` : "Al día") : ""}
     </section>
     ${zonesCard()}
+    ${zoneSunCard()}
     <div class="group-title">Avisos y calendario</div>
     <section class="card list-card settings">
       ${row("open-push", "bell", "#c93b30", "Aviso diario", store.get("mj_push", false) ? `<span class="ok">${ICONS.circleCheck}8:00</span>` : "Desactivado")}
@@ -651,6 +663,17 @@ const UPGRADES = [
     apply: (plant, care) => { plant.feedTypes = care.feedTypes; },
   },
   {
+    version: 6,
+    label: "luz que necesita y temperatura mínima",
+    apply: (plant, care) => Object.assign(plant, sunFields(care)),
+  },
+  {
+    version: 7,
+    label: "tareas que solo valen para plantas adultas",
+    source: "calendar",
+    apply: (plant, cal) => applyCalendar(plant, cal),
+  },
+  {
     version: 4,
     label: "calendario de cuidados del año",
     source: "calendar",
@@ -658,6 +681,8 @@ const UPGRADES = [
   },
 ];
 const CARE_VERSION = Math.max(...UPGRADES.map((u) => u.version));
+// What the AI says about light and cold, kept on the plant.
+const sunFields = (care) => ({ sunNeed: care.sunNeed ?? "sun", sunSensitive: Boolean(care.sunSensitive), minTemp: care.minTemp ?? null });
 const hasSeasonalCare = (p) => Boolean(p.seasons) && new Set(SEASONS.map((k) => `${p.seasons[k].water}/${p.seasons[k].feed}`)).size > 1;
 // Plants from before versioning: a varied season table means version 1; a stored AI proposal, version 2.
 const careVersionOf = (p) => Math.max(p.careVersion ?? (hasSeasonalCare(p) ? 1 : 0), p.ai ? 2 : 0);
@@ -845,13 +870,18 @@ function plantSheet(id) {
     p.rainReaches ? ["rain", "Le llega la lluvia"] : ["umbrella", "A cubierto"],
     p.frostSensitive ? ["snow", "Sensible a heladas"] : null,
     p.autoWater ? ["drip", p.irrigationOff ? "Riego automático (pausado)" : "Riego automático"] : null,
+    p.sunNeed ? ["sun", `Pide ${SUN_NEED_LABEL[p.sunNeed]}`] : null,
+    exposureOf(p, zoneSun()) ? ["sun", `Recibe ${SUN_LABEL[exposureOf(p, zoneSun())].toLowerCase()}`] : null,
+    p.size ? ["sprout", `Tamaño ${SIZE_LABEL[p.size].toLowerCase()}`] : null,
   ].filter(Boolean);
+  const sunWarn = sunAdvice(p, zoneSun());
   const LOG_ICON = { water: "droplet", feed: "flask", prune: "scissors", treat: "bug", note: "notes", task: "check" };
   openSheet(`
     <div class="sheet-head"><h2>${esc(plantLabel(p))}</h2><div class="row"><button class="btn small secondary icon-btn" data-action="dup-plant" data-id="${p.id}" aria-label="Duplicar planta" title="Duplicar">${ICONS.copy}</button><button class="btn small secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
     ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : p.refPhoto ? `<figure class="ref-photo"><img class="hero-photo" src="${esc(p.refPhoto.url)}" alt="" /><figcaption>Foto de referencia · ${esc(p.refPhoto.credit)}</figcaption></figure>` : ""}
     ${p.species || p.zone || p.nick ? `<p class="muted">${p.nick ? `${esc(p.name)} · ` : ""}${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}</p>` : ""}
     <div class="traits">${traits.map(([icon, label]) => `<span class="trait">${ICONS[icon]}${label}</span>`).join("")}</div>
+    ${sunWarn ? `<p class="sun-warn ${sunWarn.level}">${ICONS.sun}${esc(sunWarn.text)}</p>` : ""}
     ${nexts.length ? `<section class="card next-care"><div class="sec">${p.seasons ? `Ahora · ${SEASON_LABEL[season].toLowerCase()}` : "Ahora"}</div>${nexts.join("")}${p.tips?.[season] ? `<div class="n-tip">${ICONS[SEASON_ICON[season]]}<span>${esc(p.tips[season])} <span class="ai-mark">✦</span></span></div>` : ""}${nextLine}</section>` : ""}
     ${plantMonthCard(p, today)}
     <section class="card"><div class="sec">Registrar</div><div class="acts">
@@ -895,6 +925,8 @@ function plantForm(id) {
       <input name="zone" id="editZone" class="big-input" placeholder="Terraza sur, jardín delantero…" autocomplete="off" value="${esc(p.zone)}" hidden />
       ${radioSeg("inPot", "Plantada en", p.inPot, [[true, "pot", "Maceta"], [false, "ground", "Suelo"]])}
       ${radioSeg("rainReaches", "La lluvia", p.rainReaches, [[true, "rain", "Le llega"], [false, "umbrella", "A cubierto"]])}
+      ${radioSeg("sun", "Sol que recibe", p.sun ?? "", SUN_CHOICES)}
+      ${radioSeg("size", "Tamaño de la planta", p.size ?? "", SIZE_CHOICES)}
       <label class="switch-row">
         <span>${ICONS.snow}Sensible a heladas</span>
         <input type="checkbox" role="switch" name="frostSensitive" class="switch-input" ${p.frostSensitive ? "checked" : ""} />
@@ -1176,6 +1208,7 @@ async function aiFill(query) {
     if (!f.notes.value.trim() || f.notes.value === form.dataset.aiNotes) f.notes.value = care.notes;
     form.dataset.aiNotes = care.notes;
     form.dataset.aiSnapshot = JSON.stringify(aiSnapshot(care));
+    form.dataset.sunFields = JSON.stringify(sunFields(care));
     form.dataset.tips = JSON.stringify(care.tips ?? null);
     form.dataset.feedTypes = JSON.stringify(care.feedTypes ?? null);
     $("tipsBox").innerHTML = tipsList(care.tips);
@@ -1235,6 +1268,8 @@ const ICONS = {
   gridView: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'),
   sync: svg('<path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/>'),
+  plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  search: svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'),
   camera: svg('<path d="M5 7h1a2 2 0 0 0 2-2 1 1 0 0 1 1-1h6a1 1 0 0 1 1 1 2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/>'),
   bell: svg('<path d="M10 5a2 2 0 1 1 4 0 7 7 0 0 1 4 6v3a4 4 0 0 0 2 3H4a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>'),
   download: svg('<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5 5-5M12 4v12"/>'),
@@ -1264,7 +1299,7 @@ function newPlantWizard() {
   wiz = {
     step: 1, name: "", ai: "idle", aiError: "", care: null, touched: {},
     ...PLACE_DEFAULTS, ...store.get("mj_last_place", {}),
-    species: "", seasons: structuredClone(DEFAULT_SEASONS), frostSensitive: false, notes: "", newZone: false,
+    species: "", seasons: structuredClone(DEFAULT_SEASONS), frostSensitive: false, notes: "", newZone: false, sun: "", size: "medium",
   };
   wiz.autoWater = false;
   renderWizard();
@@ -1376,6 +1411,17 @@ function identifyBlock() {
     }).join("")}</div></section>` : ""}
     <div class="row"><label class="link-btn">Hacer otra foto${pick}</label><button type="button" class="link-btn" data-action="wiz-id-cancel">Escribir el nombre</button></div>`;
 }
+// The /identify call: resolves to { isPlant, candidates }, or throws an Error with a message key.
+async function callIdentify(photo) {
+  const res = await fetch(`${API}/identify`, {
+    method: "POST", headers: aiHeaders(), signal: AbortSignal.timeout(45000),
+    body: JSON.stringify({ image: photo.split(",")[1], place: here().name }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error in AI_ERRORS ? body.error : "ai");
+  return body;
+}
+const identifyErrorText = (err) => err.name === "TimeoutError" ? "Ha tardado demasiado." : (AI_ERRORS[err.message] ?? "La IA no está disponible ahora. Prueba otra vez o escribe el nombre.");
 async function identifyFromFile(file) {
   const current = wiz;
   const name = $("wizName")?.elements.name.value.trim();
@@ -1385,13 +1431,7 @@ async function identifyFromFile(file) {
   current.identify = { state: "loading", photo };
   renderWizard();
   try {
-    const loc = here();
-    const res = await fetch(`${API}/identify`, {
-      method: "POST", headers: aiHeaders(), signal: AbortSignal.timeout(45000),
-      body: JSON.stringify({ image: photo.split(",")[1], place: loc.name }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error in AI_ERRORS ? body.error : "ai");
+    const body = await callIdentify(photo);
     if (!body.isPlant || !body.candidates?.length) current.identify = { state: "none", photo, message: "Puedes repetir la foto o escribir el nombre a mano." };
     else {
       current.identify = { state: "done", photo, candidates: body.candidates, refs: {} };
@@ -1400,10 +1440,95 @@ async function identifyFromFile(file) {
       body.candidates.slice(1).forEach((c) => refPhoto(c.species).then((ph) => { if (wiz === current && current.identify) { current.identify.refs[c.species] = ph; if ($("wizName")) renderWizard(); } }));
     }
   } catch (err) {
-    current.identify = { state: "error", photo, message: err.name === "TimeoutError" ? "Ha tardado demasiado." : (AI_ERRORS[err.message] ?? "La IA no está disponible ahora. Prueba otra vez o escribe el nombre.") };
+    current.identify = { state: "error", photo, message: identifyErrorText(err) };
   }
   if (wiz === current && $("wizName")) renderWizard();
 }
+
+// ---------- Explorar: look at a plant without adding it ----------
+// Name or photo → the care sheet (the Worker's memory makes known plants free) → how it fits this
+// garden: climate here, water next to what you have, light per zone, similar plants. «Añadir a mi
+// jardín» opens the alta already filled in.
+let explore = null;
+const recentExplore = () => store.get("mj_explore_recent", []);
+function exploreSheet() {
+  const e = explore;
+  const head = `<div class="sheet-head"><h2>Explorar</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>`;
+  if (!hasAI() && aiOpen !== null) return openSheet(`${head}<p class="ai-status warn">${esc(AI_ERRORS.code)}</p>`);
+  if (!e || e.state === "idle") {
+    const recent = recentExplore();
+    return openSheet(`${head}
+      <form id="exploreForm" class="sheet-in" style="padding:0">
+        <input name="name" class="big-input" required placeholder="¿Qué planta estás mirando?" autocomplete="off" value="${esc(e?.name ?? "")}" />
+        <button class="btn block" type="submit">Ver si encaja</button>
+      </form>
+      <label class="card id-cta">${ICONS.camera}<div><b>¿No sabes cómo se llama?</b><span class="muted small">Hazle una foto y la identifico.</span></div><input type="file" id="exploreCam" accept="image/*" hidden /></label>
+      ${recent.length ? `<div class="group-title">Vistas hace poco</div><section class="card list-card">${recent.map((r, i) =>
+        `<button type="button" class="p-row" data-action="explore-recent" data-i="${i}"><div class="body"><div class="p-name">${esc(r.name)}</div><div class="p-sp">${esc(r.species ?? "")}</div></div><span class="verdict-dot ${r.verdict}">${{ good: "Encaja bien", mid: "Con reservas", bad: "No encaja" }[r.verdict]}</span></button>`).join("")}</section>` : ""}`);
+  }
+  if (e.state === "loading") return openSheet(`${head}<section class="card"><div class="ai-step"><span class="spinner" aria-hidden="true"></span>${esc(e.step ?? "Buscando la planta")}…</div></section>`);
+  if (e.state === "pick") {
+    const conf = { alta: "Muy probable", media: "Probable", baja: "Poco seguro" };
+    return openSheet(`${head}<section class="card species-check"><img src="${esc(e.photo)}" alt="" /><div class="body"><b>¿Cuál es?</b><small>Elige la que se parezca</small></div></section>
+      ${e.candidates.map((c, i) => `<button type="button" class="btn block secondary" data-action="explore-pick" data-i="${i}">${esc(c.commonName)} <em>${esc(c.species)}</em> <span class="conf ${c.confidence}">${conf[c.confidence]}</span></button>`).join("")}
+      <button type="button" class="link-btn" data-action="explore-again">Otra planta</button>`);
+  }
+  if (e.state !== "done") {
+    return openSheet(`${head}<section class="card"><b>${esc(e.message ?? "No se ha podido")}</b></section><button class="btn block" data-action="explore-again">Probar otra vez</button>`);
+  }
+  const { care, report, refPhoto: ph } = e;
+  const ICON = { climate: "snow", water: "droplet", sun: "sun", similar: "sprout" };
+  openSheet(`${head}
+    <section class="card species-check">${ph ? `<img src="${esc(ph.url)}" alt="" />` : e.photo ? `<img src="${esc(e.photo)}" alt="" />` : ""}
+      <div class="body"><b>${esc(care.commonName || e.name)} <span class="ai-mark">✦</span></b><i>${esc(care.species)}</i>${ph ? `<small>Foto: ${esc(ph.credit)}</small>` : ""}</div></section>
+    <section class="verdict ${report.verdict}"><b>${esc(report.headline)}</b><span>${esc(report.summary)}</span></section>
+    <section class="card">${report.rows.map((r) => `<div class="fit-row"><span class="fit-ic ${r.level}">${ICONS[ICON[r.kind]]}</span><div><b>${esc(r.title)}</b><span>${esc(r.text)}</span></div></div>`).join("")}</section>
+    ${altButtons(care.alternatives, "explore-alt")}
+    <p class="muted small">Es una estimación de la IA, no una garantía. «Añadir» abre el alta ya rellena.</p>
+    <div class="sheet-actions"><button class="btn block" data-action="explore-add">Añadir a mi jardín</button></div>`);
+}
+async function exploreLookup(query, name = query, photo = null) {
+  explore = { state: "loading", name, query, photo, step: "Buscando la planta" };
+  exploreSheet();
+  const current = explore;
+  try {
+    const care = await requestCare(query);
+    if (explore !== current) return;
+    const today = localToday();
+    const report = fitReport(care, state.data.plants, zoneSun(), seasonOf(today, here().lat), here().name);
+    explore = { state: "done", name, query, photo, care, report, refPhoto: null };
+    const rec = { query, name: care.commonName || name, species: care.species, verdict: report.verdict };
+    store.set("mj_explore_recent", [rec, ...recentExplore().filter((r) => r.query !== query && r.species !== rec.species)].slice(0, 6));
+    track("plant_explore");
+    exploreSheet();
+    const done = explore;
+    refPhoto(care.species).then((ph) => { if (explore === done) { done.refPhoto = ph; if ($("sheet").open && sheet.querySelector('[data-action="explore-add"]')) exploreSheet(); } });
+  } catch (err) {
+    if (explore === current) { explore = { state: "error", message: AI_ERRORS[err.message] ?? "La IA no está disponible ahora. Prueba otra vez en un rato." }; exploreSheet(); }
+  }
+}
+async function exploreFromFile(file) {
+  const photo = await shrinkPhoto(file).catch(() => null);
+  if (!photo) return;
+  explore = { state: "loading", photo, step: "Mirando la foto" };
+  exploreSheet();
+  const current = explore;
+  try {
+    const body = await callIdentify(photo);
+    if (explore !== current) return;
+    if (!body.isPlant || !body.candidates?.length) explore = { state: "error", message: "La foto no me basta para saber qué planta es. Acércate a una hoja o a una flor, con luz natural, o escribe el nombre." };
+    else if (body.candidates.length === 1 || body.candidates[0].confidence === "alta") return exploreLookup(altQuery(body.candidates[0]), body.candidates[0].commonName, photo);
+    else explore = { state: "pick", photo, candidates: body.candidates };
+  } catch (err) {
+    if (explore === current) explore = { state: "error", message: identifyErrorText(err) };
+  }
+  exploreSheet();
+}
+
+// «Zona» = the sun set for its zone in Ajustes.
+const SUN_CHOICES = [["", "pin", "Zona"], ["sun", "sun", "Sol"], ["partial", "cloud", "Media"], ["shade", "umbrella", "Sombra"]];
+const SIZE_CHOICES = [["small", "sprout", "Pequeña"], ["medium", "sprout", "Mediana"], ["large", "sprout", "Grande"]];
+const SIZE_LABEL = { small: "Pequeña", medium: "Mediana", large: "Grande" };
 
 function renderWizard() {
   if (!wiz) return;
@@ -1462,6 +1587,8 @@ function renderWizard() {
     ${wiz.newZone ? `<input id="wizZone" class="big-input" placeholder="Terraza sur, jardín delantero…" autocomplete="off" value="${esc(wiz.zone)}" />` : ""}
     ${segmented("inPot", "Plantada en", [[true, "pot", "Maceta"], [false, "ground", "Suelo"]])}
     ${segmented("rainReaches", "La lluvia", [[true, "rain", "Le llega"], [false, "umbrella", "A cubierto"]])}
+    ${segmented("sun", "Sol que recibe", SUN_CHOICES)}
+    ${segmented("size", "Tamaño de la planta", SIZE_CHOICES)}
     <button type="button" class="switch-row" role="switch" aria-checked="${wiz.frostSensitive && !busy}" data-action="wiz-set" data-key="frostSensitive" ${lock}>
       <span>${ICONS.snow}Sensible a heladas</span><span class="switch" aria-hidden="true"></span>
     </button>
@@ -1532,7 +1659,9 @@ function wizSave() {
     seasons: wiz.seasons, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
     frostSensitive: wiz.frostSensitive, autoWater: wiz.autoWater, notes: wiz.notes, tips: wiz.tips, feedTypes: wiz.feedTypes, photo: draftPhoto,
   };
-  if (wiz.ai === "done" && wiz.care) plant.ai = aiSnapshot(wiz.care);
+  if (wiz.ai === "done" && wiz.care) { plant.ai = aiSnapshot(wiz.care); Object.assign(plant, sunFields(wiz.care)); }
+  plant.sun = wiz.sun || "";
+  plant.size = wiz.size || "";
   // With the AI, the calendar (version 4) arrives in the background; by hand, nothing to fetch.
   plant.careVersion = wiz.ai === "done" ? 3 : CARE_VERSION;
   withCurrentIntervals(plant);
@@ -1607,7 +1736,7 @@ const actions = {
   "wiz-zone": (d) => { wiz.zone = d.zone; wiz.newZone = false; renderWizard(); },
   "wiz-new-zone": () => { wiz.newZone = true; wiz.zone = ""; renderWizard(); },
   "wiz-set": (d) => {
-    wiz[d.key] = d.key === "frostSensitive" || d.key === "autoWater" ? !wiz[d.key] : d.value === "true";
+    wiz[d.key] = d.key === "sun" || d.key === "size" ? d.value : d.key === "frostSensitive" || d.key === "autoWater" ? !wiz[d.key] : d.value === "true";
     wiz.touched[d.key] = true;
     renderWizard();
   },
@@ -1649,6 +1778,13 @@ const actions = {
     save();
     render();
     if (d.reopen) plantSheet(p.id);
+  },
+  "zone-sun": (d) => {
+    const z = { ...zoneSun() };
+    if (z[d.zone] === d.sun) delete z[d.zone]; else z[d.zone] = d.sun;
+    state.data.zoneSun = z;
+    save();
+    render();
   },
   "zone-auto": (d) => {
     const paused = pausedZones().includes(d.zone);
@@ -1755,6 +1891,22 @@ const actions = {
     render();
     await pushNow();
   },
+  "add-menu": () => openSheet(`<div class="sheet-head"><h2>Añadir</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
+    <button type="button" class="menu-row" data-action="new-plant"><span class="menu-ic add">${ICONS.plus}</span><span><b>Añadir planta</b><small>Guardarla en tu jardín</small></span></button>
+    <button type="button" class="menu-row" data-action="explore-open"><span class="menu-ic explore">${ICONS.search}</span><span><b>Explorar una planta</b><small>Ver si encaja, sin añadirla</small></span></button>`),
+  "explore-open": () => { explore = { state: "idle" }; exploreSheet(); },
+  "explore-again": () => { explore = { state: "idle" }; exploreSheet(); },
+  "explore-recent": (d) => { const r = recentExplore()[+d.i]; if (r) exploreLookup(r.query, r.name); },
+  "explore-alt": (d) => { const a = explore?.care?.alternatives?.[+d.i]; if (a) exploreLookup(altQuery(a), a.commonName); },
+  "explore-pick": (d) => { const c = explore?.candidates?.[+d.i]; if (c) exploreLookup(altQuery(c), c.commonName, explore.photo); },
+  "explore-add": () => {
+    const e = explore;
+    if (!e?.care) return;
+    newPlantWizard();
+    draftPhoto = e.photo ?? null;
+    Object.assign(wiz, { name: e.name, query: e.query, step: 2 });
+    if (hasAI() || aiOpen === null) wizLookup(); else renderWizard();
+  },
   "plants-view": (d) => { store.set("mj_plants_view", d.view); render(); },
   "toggle-week-tasks": () => { weekAll = !weekAll; render(); },
   "toggle-done": () => { doneOpen = !doneOpen; render(); },
@@ -1830,6 +1982,11 @@ document.addEventListener("input", (e) => {
 
 document.addEventListener("change", async (e) => {
   if (e.target.closest("#plantForm")) formDirty = true;
+  if (e.target.id === "exploreCam" && e.target.files[0]) {
+    const file = e.target.files[0];
+    e.target.value = "";
+    return exploreFromFile(file);
+  }
   if (e.target.id === "idPhotoInput" && e.target.files[0] && wiz) {
     const file = e.target.files[0];
     e.target.value = "";
@@ -1859,6 +2016,12 @@ document.addEventListener("submit", (e) => {
   if (e.target.id === "aiCodeForm") {
     e.preventDefault();
     saveCode(new FormData(e.target).get("code").trim());
+    return;
+  }
+  if (e.target.id === "exploreForm") {
+    e.preventDefault();
+    const name = new FormData(e.target).get("name").trim();
+    if (name) exploreLookup(name);
     return;
   }
   if (e.target.id === "wizName") {
@@ -1893,12 +2056,15 @@ document.addEventListener("submit", (e) => {
     inPot: f.get("inPot") === "true",
     frostSensitive: f.has("frostSensitive"),
     autoWater: f.has("autoWater"),
+    sun: f.get("sun") ?? "",
+    size: f.get("size") ?? "",
     notes: f.get("notes").trim(),
     photo: draftPhoto,
   };
   withCurrentIntervals(fields);
   if (e.target.dataset.aiFilled) fields.careVersion = Math.max(3, Math.min(careVersionOf(plantById(id) ?? {}), CARE_VERSION));
   if (e.target.dataset.aiSnapshot) fields.ai = JSON.parse(e.target.dataset.aiSnapshot);
+  if (e.target.dataset.sunFields) Object.assign(fields, JSON.parse(e.target.dataset.sunFields));
   if (e.target.dataset.tips && e.target.dataset.tips !== "null") fields.tips = JSON.parse(e.target.dataset.tips);
   if (e.target.dataset.feedTypes && e.target.dataset.feedTypes !== "null") fields.feedTypes = JSON.parse(e.target.dataset.feedTypes);
   if (id) Object.assign(plantById(id), fields);
