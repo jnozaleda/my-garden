@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261004a";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261004b";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261004a";
-import { buildICS } from "./calendar.js?v=20261004a";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261004a";
+} from "./rules.js?v=20261004b";
+import { buildICS } from "./calendar.js?v=20261004b";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261004b";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -850,10 +850,23 @@ let moveReady = false;
   moveReady = true;
   render();
 })();
-const moveBanner = () => moveReady ? `<section class="card upgrade-banner">
+// Two steps: «Mudarme» saves the garden and shows the result; the tap on «Abrir Florvia» is a real link
+// (works inside an installed iOS app too) and the key is shown to paste by hand as a fallback.
+let moveState = { busy: false, url: null, key: null, error: null };
+const moveBanner = () => {
+  if (!moveReady) return "";
+  const m = moveState;
+  if (m.url) return `<section class="card upgrade-banner">
+    <p><strong>✅ Tu jardín está guardado</strong></p>
+    <p class="muted small">Abre Florvia, pulsa «Unirme» y listo. Después, añádela a la pantalla de inicio desde Safari (Compartir → Añadir a pantalla de inicio) y vuelve a activar el aviso diario.</p>
+    <div class="row"><a class="btn small" href="${esc(m.url)}" target="_blank" rel="noopener">Abrir Florvia</a><button class="btn small secondary" data-action="move-copy">Copiar enlace</button></div>
+    <p class="muted small" style="margin-top:8px">Si no se abre: copia el enlace y pégalo en Safari, o en Florvia ve a Ajustes → Sincronizar → «Ya tengo una clave» y escribe <b>${esc(formatKey(m.key))}</b>.</p></section>`;
+  return `<section class="card upgrade-banner">
     <p><strong>Mi Jardín ahora se llama Florvia</strong></p>
-    <p class="muted small">Pulsa y tu jardín se guarda y se abre en la dirección nueva. Allí, añade Florvia a la pantalla de inicio y vuelve a activar el aviso diario.</p>
-    <div class="row"><button class="btn small" data-action="move-florvia" id="moveBtn">Mudarme a Florvia</button></div></section>` : "";
+    <p class="muted small">Pulsa y tu jardín se guarda para llevarlo a la dirección nueva. No pierdes nada.</p>
+    ${m.error ? `<p class="ai-status warn">${esc(m.error)}</p>` : ""}
+    <div class="row"><button class="btn small" data-action="move-florvia" ${m.busy ? "disabled" : ""}>${m.busy ? "Guardando tu jardín…" : "Mudarme a Florvia"}</button></div></section>`;
+};
 
 function upgradeBanner() {
   const pending = pendingUpgrades();
@@ -2073,18 +2086,23 @@ const actions = {
   },
   "open-sync": () => syncSheet(),
   "move-florvia": async () => {
-    const btn = $("moveBtn");
-    if (btn) { btn.disabled = true; btn.textContent = "Mudando…"; }
+    moveState = { busy: true, url: null, key: null, error: null };
+    render();
     if (!syncKey()) {
       for (const item of [...state.data.plants, ...state.data.log]) item._at ??= Date.now();
       store.set("mj_sync", { key: newKey() });
       await refreshUsageId();
     }
+    syncStatus.error = null;
     await pushNow();
-    if (syncStatus.error) { if (btn) { btn.disabled = false; btn.textContent = "Mudarme a Florvia"; } return toast("No se ha podido guardar tu jardín. Prueba otra vez."); }
-    window.__moveUrl = `${NEW_ORIGIN}/app/#jardin=${syncKey()}`;
-    setTimeout(() => location.assign(window.__moveUrl), 50);
+    if (syncStatus.error) {
+      moveState = { busy: false, url: null, key: null, error: "No se ha podido guardar tu jardín (¿sin conexión?). Prueba otra vez." };
+      return render();
+    }
+    moveState = { busy: false, url: `${NEW_ORIGIN}/app/#jardin=${syncKey()}`, key: syncKey(), error: null };
+    render();
   },
+  "move-copy": async () => { await navigator.clipboard?.writeText(moveState.url).catch(() => {}); toast("Enlace copiado"); },
   "open-push": () => pushSheet(),
   "push-on": async () => {
     pushSheet("Activando…");
