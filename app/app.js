@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002u";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002w";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel,
-} from "./rules.js?v=20261002u";
-import { buildICS } from "./calendar.js?v=20261002u";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden } from "./sync.js?v=20261002u";
+} from "./rules.js?v=20261002w";
+import { buildICS } from "./calendar.js?v=20261002w";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261002w";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -429,7 +429,7 @@ function applyRemote(remote) {
   store.set("mj_data", state.data);
   syncStatus = { at: Date.now(), error: null, devices: Object.keys(remote.devices ?? {}).length };
   store.set("mj_sync", { key: syncKey(), at: syncStatus.at, devices: syncStatus.devices });
-  if (docHash(state.data) !== docHash(remote)) schedulePush();
+  if (needsPush(state.data, remote)) schedulePush();
   if (docHash(state.data) !== before) render();
   if ($("syncSheet")) syncSheet();
 }
@@ -500,6 +500,35 @@ async function joinSheet(key) {
     <div class="sheet-actions"><button class="btn block" data-action="sync-join" data-key="${key}">Unirme</button></div>`);
 }
 
+// ---------- Daily push («Aviso diario», sent by the Worker at 08:00 from the synced garden) ----------
+const VAPID_PUBLIC = "BAgS8ly6V2km_DtMyicFWaAQ9gGQyJdX9OP-oiXx9i9OB98Lr2H5gOkqYP9RUsYPq9333c5NPpKZgLijFUlz3ZE";
+async function subscribePush() {
+  const reg = await navigator.serviceWorker.ready;
+  const key = Uint8Array.from(atob(VAPID_PUBLIC.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+  const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }));
+  const loc = here();
+  const res = await fetch(`${API}/push/subscribe`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sub: sub.toJSON(), key: syncKey(), lat: loc.lat, lon: loc.lon }),
+  });
+  if (!res.ok) throw new Error(`servidor ${res.status}`);
+}
+function pushSheet(message = null) {
+  const on = store.get("mj_push", false);
+  const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  openSheet(`<div class="sheet-head"><h2>Aviso diario</h2><button class="btn small secondary" data-action="close">Cerrar</button></div>
+    <p>Cada mañana a las 8:00, un aviso con lo que toca hoy (regar, abonar) y los avisos del tiempo (helada, calor, viento). Si no hay nada, no llega nada.</p>
+    ${message ? `<p class="ai-status ${/No |Sin /.test(message) ? "warn" : "ok"}">${esc(message)}</p>` : ""}
+    ${!supported || (ios && !standalone) ? `<p class="ai-status warn">${ios ? "En iPhone, los avisos solo funcionan con la app instalada: Compartir → «Añadir a pantalla de inicio», y ábrela desde el icono." : "Este navegador no admite avisos."}</p>`
+      : on ? `<section class="card"><div class="sync-status"><span class="dot"></span>Activado · cada día a las 8:00</div><p class="muted small">Para ${esc(here().name)}. Usa el jardín sincronizado, así que incluye lo que hagan los demás móviles.</p></section>
+        <button class="btn block secondary" data-action="push-test">Enviar un aviso de prueba</button>
+        <button class="btn block danger-text" data-action="push-off">Desactivar el aviso</button>`
+      : `${syncKey() ? "" : `<p class="muted small">Para avisarte con la app cerrada, el servidor tiene que conocer tus plantas: se activará también la sincronización (Ajustes → Sincronizar).</p>`}
+        <button class="btn block" data-action="push-on">Activar aviso diario</button>`}`);
+}
+
 function moreView() {
   const loc = state.loc ?? DEFAULT_LOC;
   const aiOn = aiOpen === true || (aiCode() && codeStatus?.kind !== "warn");
@@ -518,7 +547,7 @@ function moreView() {
     ${zonesCard()}
     <div class="group-title">Avisos y calendario</div>
     <section class="card list-card settings">
-      ${row("noop", "bell", "#c93b30", "Aviso diario", "Próximamente", false)}
+      ${row("open-push", "bell", "#c93b30", "Aviso diario", store.get("mj_push", false) ? `<span class="ok">${ICONS.circleCheck}8:00</span>` : "Desactivado")}
       ${row("export-ics", "calendar", "#2f8f4e", "Exportar al calendario", "", true, !state.data.plants.length)}
     </section>
     <p class="group-foot">${isStandalone ? "" : "Para recibir avisos en el iPhone, instala la app: Compartir → «Añadir a pantalla de inicio». "}Los riegos y abonados se añaden a tu calendario como eventos que se repiten por estación; si cambias algo, vuelve a exportarlo.</p>
@@ -1033,6 +1062,7 @@ function placeSheet() {
 function setLoc(loc) {
   state.loc = loc;
   store.set("mj_loc", loc);
+  if (store.get("mj_push", false)) subscribePush().catch(() => {});
   closeSheet();
   loadWeather();
 }
@@ -1591,6 +1621,42 @@ const actions = {
     plantSheet(p.id);
   },
   "open-sync": () => syncSheet(),
+  "open-push": () => pushSheet(),
+  "push-on": async () => {
+    pushSheet("Activando…");
+    try {
+      if (!syncKey()) {
+        for (const item of [...state.data.plants, ...state.data.log]) item._at ??= Date.now();
+        store.set("mj_sync", { key: newKey() });
+        await pushNow();
+      }
+      if ((await Notification.requestPermission()) !== "granted") return pushSheet("Sin permiso no se pueden enviar avisos. Puedes darlo en los ajustes del móvil, en Notificaciones.");
+      await subscribePush();
+      store.set("mj_push", true);
+      render();
+      pushSheet("Aviso diario activado.");
+    } catch (err) { pushSheet(`No se ha podido activar (${err.message}).`); }
+  },
+  "push-test": async () => {
+    pushSheet("Enviando…");
+    try {
+      const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+      const r = await fetch(`${API}/push/test`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub?.endpoint }) }).then((x) => x.json());
+      pushSheet(r.sent ? "Enviado: debería llegarte en unos segundos." : "No se ha podido enviar. Prueba a desactivar y activar el aviso.");
+    } catch { pushSheet("No se ha podido enviar."); }
+  },
+  "push-off": async () => {
+    try {
+      const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+      if (sub) {
+        await fetch(`${API}/push/unsubscribe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {});
+        await sub.unsubscribe();
+      }
+    } catch {}
+    store.set("mj_push", false);
+    render();
+    pushSheet();
+  },
   "sync-on": async () => {
     const key = newKey();
     for (const item of [...state.data.plants, ...state.data.log]) item._at ??= Date.now();

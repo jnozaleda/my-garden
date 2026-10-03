@@ -53,6 +53,14 @@ export function stampChanges(data, prev) {
   return next;
 }
 export const docHash = (doc) => hash(JSON.stringify(gardenDoc(doc)));
+// Whether `local` has anything newer than `remote` (by `_at`, tombstones, settings): only then push.
+// Content isn't compared, so fields the app derives on load (irrigationOff) can't cause a loop.
+export function needsPush(local, remote) {
+  const at = new Map([...(remote.plants ?? []), ...(remote.log ?? [])].map((i) => [i.id, i._at ?? 0]));
+  if ([...local.plants, ...local.log].some((i) => !at.has(i.id) || (i._at ?? 0) > at.get(i.id))) return true;
+  if (Object.entries(local.deleted ?? {}).some(([id, t]) => (remote.deleted?.[id] ?? 0) < t)) return true;
+  return (local.settingsAt ?? 0) > (remote.settingsAt ?? 0);
+}
 
 // Keys: 16 characters without look-alikes (0/O, 1/I/L), shown as XXXX-XXXX-XXXX-XXXX.
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";

@@ -48,6 +48,7 @@ Cloudflare Worker en https://my-garden-api.tempcheck-app.workers.dev
 | Ruta | Qué hace |
 |---|---|
 | `GET /health` | Comprobación |
+| `POST /push/subscribe` · `/push/unsubscribe` · `/push/test` | Aviso diario: guarda la suscripción del navegador (endpoint de Apple/Google/Mozilla, clave del jardín, ubicación). Un cron a las 06:00 y 07:00 UTC envía a las 8:00 de Madrid lo que toca hoy (mismas reglas que la app, `app/rules.js`) y los avisos del tiempo, solo si hay algo. Cifrado Web Push y firma VAPID hechos en el Worker (clave privada en el secreto `VAPID_PRIVATE_JWK`) |
 | `GET/PUT /garden/:clave` | Sincronización («clave del jardín», 16 caracteres). PUT envía el jardín entero; el Worker lo combina con lo guardado (gana el cambio más reciente por planta y registro, los borrados se guardan como marcas) y devuelve el resultado. Se guarda en KV bajo el hash de la clave. Quien tiene la clave lo lee y edita: así se comparte |
 | `POST /event` | `{ device, events: [...] }` (texto plano, sin código) → suma recuentos anónimos al resumen del día (`stats:AAAA-MM-DD` en KV: eventos, dispositivos con hash, uso de la IA). La app los envía en lotes |
 | `GET /stats?days=30` | Resúmenes por día para «Uso de la app». **Siempre** exige el código de acceso, aunque la IA esté abierta |

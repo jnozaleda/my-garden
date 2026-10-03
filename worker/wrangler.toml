@@ -14,7 +14,12 @@ binding = "AI"
 binding = "CACHE"
 id = "81322824fdd74edea7300bb086625d7c"
 
+# Daily push at 08:00 Madrid: 06:00 UTC in summer, 07:00 UTC in winter (scheduled() checks the hour).
+[triggers]
+crons = ["0 6,7 * * *"]
+
 [vars]
+VAPID_PUBLIC = "BAgS8ly6V2km_DtMyicFWaAQ9gGQyJdX9OP-oiXx9i9OB98Lr2H5gOkqYP9RUsYPq9333c5NPpKZgLijFUlz3ZE"
 ALLOWED_ORIGINS = "https://jnozaleda.github.io,http://localhost:8767"
 # Chain: first that answers wins (Gemini free tier, then Workers AI as backup).
 # Free Gemini quotas are per model and per day (Flash: 20/day), so two Gemini models go first.

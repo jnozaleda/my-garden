@@ -1,3 +1,5 @@
+import { dueTasks, weatherAlerts, weatherChecks, plantLabel } from "../../app/rules.js";
+import { fetchWeather } from "../../app/weather.js";
 // my-garden-api — the app's small backend. For now one job: fill in a plant's care sheet from
 // its name ("✨ Rellenar con IA"). The AI provider is a setting (PROVIDER) so moving from the free
 // Cloudflare model to a paid one later only touches this file, never the app.
@@ -470,7 +472,142 @@ async function handleGarden(request, env, headers, key) {
   return json(doc, 200, headers);
 }
 
+// ---------- Daily push («Aviso diario») ----------
+// The browser subscribes with its push endpoint, the garden key (the garden must be synced) and its
+// location. A Cron Trigger fires at 06:00 and 07:00 UTC; the run that lands at 08:00 Madrid sends
+// each subscriber today's care (rules.js, same as the app) and weather alerts, only if there is
+// something to say. Web Push is encrypted here (RFC 8291 aes128gcm) and signed with VAPID (RFC 8292).
+
+const PUSH_HOSTS = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com", ".notify.windows.com"];
+const b64u = {
+  enc: (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
+  dec: (str) => Uint8Array.from(atob(str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4)), (c) => c.charCodeAt(0)),
+};
+const concat = (...parts) => {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let i = 0;
+  for (const p of parts) { out.set(p, i); i += p.length; }
+  return out;
+};
+const utf8 = (s) => new TextEncoder().encode(s);
+async function hkdf(salt, ikm, info, bytes) {
+  const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, key, bytes * 8));
+}
+async function encryptPush(payload, p256dh, auth) {
+  const uaPublic = b64u.dec(p256dh);
+  const local = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const asPublic = new Uint8Array(await crypto.subtle.exportKey("raw", local.publicKey));
+  const uaKey = await crypto.subtle.importKey("raw", uaPublic, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey }, local.privateKey, 256));
+  const ikm = await hkdf(b64u.dec(auth), shared, concat(utf8("WebPush: info\0"), uaPublic, asPublic), 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, utf8("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdf(salt, ikm, utf8("Content-Encoding: nonce\0"), 12);
+  const key = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, concat(utf8(payload), new Uint8Array([2]))));
+  const header = new Uint8Array(21);
+  header.set(salt);
+  new DataView(header.buffer).setUint32(16, 4096);
+  header[20] = 65;
+  return concat(header, asPublic, cipher);
+}
+async function vapidAuth(endpoint, env) {
+  const jwk = JSON.parse(env.VAPID_PRIVATE_JWK);
+  const key = await crypto.subtle.importKey("jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const head = b64u.enc(utf8(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const body = b64u.enc(utf8(JSON.stringify({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: "mailto:j.nozaleda.pastor@gmail.com" })));
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, utf8(`${head}.${body}`));
+  return `vapid t=${head}.${body}.${b64u.enc(sig)}, k=${env.VAPID_PUBLIC}`;
+}
+// Returns the push service's status (404/410 = subscription gone).
+async function sendPush(sub, message, env) {
+  const res = await fetch(sub.endpoint, {
+    method: "POST",
+    headers: { TTL: "43200", Urgency: "normal", "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", Authorization: await vapidAuth(sub.endpoint, env) },
+    body: await encryptPush(JSON.stringify(message), sub.keys.p256dh, sub.keys.auth),
+  });
+  return res.status;
+}
+function validPushEndpoint(value) {
+  if (typeof value !== "string" || value.length > 800) return null;
+  let u;
+  try { u = new URL(value); } catch { return null; }
+  if (u.protocol !== "https:") return null;
+  return PUSH_HOSTS.some((h) => (h.startsWith(".") ? u.hostname.endsWith(h) : u.hostname === h)) ? value : null;
+}
+const pushKey = async (endpoint) => `push:${(await gardenKey(endpoint)).slice(7, 47)}`;
+
+// Today's message for one garden, or null when there's nothing worth a notification.
+function dailyMessage(garden, weather, today, lat) {
+  const plants = garden.plants ?? [];
+  const tasks = dueTasks(plants, garden.log ?? [], weather, today, lat, 0).filter((t) => t.advice?.kind !== "skip");
+  const alerts = weatherAlerts(plants, weather, today);
+  const checks = weatherChecks(plants, weather, today).filter((c) => c.title.startsWith("Riego automático") || c.title.startsWith("Calor: revisa"));
+  const lines = [];
+  const by = (type) => tasks.filter((t) => t.type === type).map((t) => plantLabel(t.plant));
+  const list = (names) => (names.length > 4 ? `${names.slice(0, 4).join(", ")} y ${names.length - 4} más` : names.join(", ").replace(/, ([^,]*)$/, " y $1"));
+  if (by("water").length) lines.push(`Regar: ${list(by("water"))}`);
+  if (by("feed").length) lines.push(`Abonar: ${list(by("feed"))}`);
+  for (const a of alerts) lines.push(`${a.icon} ${a.title}`);
+  for (const c of checks) lines.push(c.title);
+  if (!lines.length) return null;
+  const n = tasks.length;
+  return { title: n ? `Hoy en el jardín: ${n === 1 ? "1 tarea" : `${n} tareas`}` : "Aviso del tiempo para el jardín", body: lines.join("\n"), url: "./" };
+}
+const madridNow = () => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date()).map((p) => [p.type, p.value]));
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
+};
+async function sendDaily(env, onlyEndpoint = null) {
+  const { date } = madridNow();
+  const list = [];
+  let cursor;
+  do {
+    const page = await env.CACHE.list({ prefix: "push:", cursor });
+    list.push(...page.keys.map((k) => k.name));
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  const weatherCache = new Map();
+  let sent = 0;
+  for (const name of list) {
+    const rec = await env.CACHE.get(name, "json");
+    if (!rec || (onlyEndpoint && rec.sub.endpoint !== onlyEndpoint)) continue;
+    const garden = await env.CACHE.get(await gardenKey(rec.key), "json");
+    if (!garden) continue;
+    const cell = `${Math.round(rec.lat * 10)}:${Math.round(rec.lon * 10)}`;
+    if (!weatherCache.has(cell)) weatherCache.set(cell, await fetchWeather({ lat: rec.lat, lon: rec.lon }).catch(() => null));
+    let msg = dailyMessage(garden, weatherCache.get(cell), date, rec.lat);
+    if (!msg && onlyEndpoint) msg = { title: "Mi Jardín", body: "Hoy no hay nada pendiente en el jardín. Así se verá el aviso de las 8:00.", url: "./" };
+    if (!msg) continue;
+    const status = await sendPush(rec.sub, msg, env).catch(() => 0);
+    if (status === 404 || status === 410) await env.CACHE.delete(name);
+    if (status >= 200 && status < 300) sent++;
+  }
+  return sent;
+}
+async function handlePush(request, env, headers, action) {
+  const body = await request.json().catch(() => null);
+  const endpoint = validPushEndpoint(body?.sub?.endpoint ?? body?.endpoint);
+  if (!endpoint) return json({ error: "endpoint" }, 400, headers);
+  const name = await pushKey(endpoint);
+  if (action === "unsubscribe") { await env.CACHE.delete(name); return json({ ok: true }, 200, headers); }
+  if (action === "test") return json({ sent: await sendDaily(env, endpoint) }, 200, headers);
+  const { p256dh, auth } = body.sub.keys ?? {};
+  const lat = Number(body.lat), lon = Number(body.lon);
+  if (!KEY_RE.test(body.key ?? "") || typeof p256dh !== "string" || typeof auth !== "string" || p256dh.length > 120 || auth.length > 40) return json({ error: "input" }, 400, headers);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: "input" }, 400, headers);
+  await env.CACHE.put(name, JSON.stringify({ sub: { endpoint, keys: { p256dh, auth } }, key: body.key, lat, lon, since: new Date().toISOString().slice(0, 10) }));
+  return json({ ok: true }, 200, headers);
+}
+
 export default {
+  // 06:00 and 07:00 UTC: whichever is 08:00 in Madrid (summer or winter) sends the daily push.
+  async scheduled(event, env, ctx) {
+    if (madridNow().hour !== 8) return;
+    console.log("daily push sent:", await sendDaily(env));
+  },
   async fetch(request, env, ctx) {
     const headers = cors(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
@@ -481,6 +618,8 @@ export default {
     if (pathname === "/calendar" && request.method === "POST") return handleCalendar(request, env, headers, ctx);
     if (pathname === "/event" && request.method === "POST") return handleEvent(request, env, headers);
     if (pathname === "/stats") return handleStats(request, env, headers);
+    const push = pathname.match(/^\/push\/(subscribe|unsubscribe|test)$/);
+    if (push && request.method === "POST") return handlePush(request, env, headers, push[1]);
     const garden = pathname.match(/^\/garden\/([^/]+)$/);
     if (garden && (request.method === "GET" || request.method === "PUT")) return handleGarden(request, env, headers, garden[1]);
     return json({ error: "not_found" }, 404, headers);
