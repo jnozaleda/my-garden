@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002x";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261002z";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks,
-} from "./rules.js?v=20261002x";
-import { buildICS } from "./calendar.js?v=20261002x";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261002x";
+} from "./rules.js?v=20261002z";
+import { buildICS } from "./calendar.js?v=20261002z";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261002z";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -1087,7 +1087,7 @@ async function requestCare(name) {
   try {
     res = await fetch(`${API}/care`, {
       method: "POST",
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(50000),
       headers: aiHeaders(),
       body: JSON.stringify({ name, lat: loc.lat, lon: loc.lon, place: loc.name }),
     });
@@ -1341,6 +1341,70 @@ function dupSheet(id) {
     <div class="sheet-actions"><button class="btn block" data-action="dup-save" data-id="${p.id}">Crear copia</button></div>`);
 }
 
+// ---------- Identify a plant from a photo (Worker /identify, Gemini vision) ----------
+// Step 1 of the alta: «¿No sabes cómo se llama?» → photo (camera or gallery, via the file input) →
+// the AI proposes up to 3 species with their confidence → picking one fills the name and goes to step 2
+// with the photo kept as the plant's own.
+function identifyBlock() {
+  const id = wiz.identify;
+  const pick = `<input type="file" id="idPhotoInput" accept="image/*" hidden />`;
+  if (!id) {
+    return `<label class="card id-cta">${ICONS.camera}<div><b>¿No sabes cómo se llama?</b><span class="muted small">Hazle una foto (mejor de cerca a una hoja o una flor) o elige una de tu galería.</span></div>${pick}</label>`;
+  }
+  if (id.state === "loading") {
+    return `<section class="card"><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Mirando la foto…</div></section>`;
+  }
+  if (id.state !== "done") {
+    return `<section class="card"><b>${id.state === "none" ? "La foto no me basta para saber qué planta es" : "No he podido mirar la foto"}</b>
+      <p class="muted small">${esc(id.message ?? "")}</p>
+      ${id.state === "none" ? `<ul class="id-tips"><li>Acércate a una hoja o a una flor</li><li>Con luz natural, sin sombra encima</li><li>Una sola planta en el encuadre</li></ul>` : ""}
+      <label class="btn block">Hacer otra foto${pick}</label>
+      <button type="button" class="btn block secondary" data-action="wiz-id-cancel">Escribir el nombre</button></section>`;
+  }
+  const [top, ...others] = id.candidates;
+  const photoOf = (c) => id.refs?.[c.species];
+  const conf = { alta: "Muy probable", media: "Probable", baja: "Poco seguro" };
+  return `<section class="card species-check">
+      <img src="${esc(id.photo)}" alt="" />
+      <div class="body"><b>${esc(top.commonName)} <span class="ai-mark">✦</span> <span class="conf ${top.confidence}">${conf[top.confidence]}</span></b><i>${esc(top.species)}</i>
+        <small>Tu foto será la foto de la planta</small>
+        <div class="q-row"><button type="button" class="btn small" data-action="wiz-id-pick" data-i="0">Sí, es esta</button></div></div>
+    </section>
+    ${others.length ? `<section class="card species-alts"><div class="sec">También podría ser</div><div class="alt-grid">${others.map((c, i) => {
+      const ph = photoOf(c);
+      return `<button type="button" class="alt-card" data-action="wiz-id-pick" data-i="${i + 1}">${ph ? `<img src="${esc(ph.url)}" alt="" />` : `<span class="alt-noimg">${ph === null ? "Sin foto" : `<span class="spinner" aria-hidden="true"></span>`}</span>`}<b>${esc(c.commonName)}</b><i>${esc(c.species)}</i></button>`;
+    }).join("")}</div></section>` : ""}
+    <div class="row"><label class="link-btn">Hacer otra foto${pick}</label><button type="button" class="link-btn" data-action="wiz-id-cancel">Escribir el nombre</button></div>`;
+}
+async function identifyFromFile(file) {
+  const current = wiz;
+  const name = $("wizName")?.elements.name.value.trim();
+  if (name) current.name = name;
+  const photo = await shrinkPhoto(file).catch(() => null);
+  if (!photo) return;
+  current.identify = { state: "loading", photo };
+  renderWizard();
+  try {
+    const loc = here();
+    const res = await fetch(`${API}/identify`, {
+      method: "POST", headers: aiHeaders(), signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({ image: photo.split(",")[1], place: loc.name }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error in AI_ERRORS ? body.error : "ai");
+    if (!body.isPlant || !body.candidates?.length) current.identify = { state: "none", photo, message: "Puedes repetir la foto o escribir el nombre a mano." };
+    else {
+      current.identify = { state: "done", photo, candidates: body.candidates, refs: {} };
+      track("plant_identify");
+      // Reference photos for the alternatives, as in the alta by name.
+      body.candidates.slice(1).forEach((c) => refPhoto(c.species).then((ph) => { if (wiz === current && current.identify) { current.identify.refs[c.species] = ph; if ($("wizName")) renderWizard(); } }));
+    }
+  } catch (err) {
+    current.identify = { state: "error", photo, message: err.name === "TimeoutError" ? "Ha tardado demasiado." : (AI_ERRORS[err.message] ?? "La IA no está disponible ahora. Prueba otra vez o escribe el nombre.") };
+  }
+  if (wiz === current && $("wizName")) renderWizard();
+}
+
 function renderWizard() {
   if (!wiz) return;
   const head = (right) => `<div class="sheet-head"><h2>Nueva planta</h2><div class="row"><span class="muted">${wiz.step} de 2</span>${right}</div></div>`;
@@ -1355,7 +1419,8 @@ function renderWizard() {
           <label class="btn small secondary">Añadir foto<input type="file" id="photoInput" accept="image/*" hidden /></label></div>
         <p class="muted">${hasCode ? `<span class="ai-mark">✦</span> Con el nombre, la IA propondrá sus cuidados por estación para tu zona.` : "Activa el asistente IA en Ajustes para que proponga los cuidados."}</p>
         <button class="btn block" type="submit">Siguiente</button>
-      </form>`);
+      </form>
+      ${hasCode ? identifyBlock() : ""}`);
     setTimeout(() => $("wizName")?.elements.name.focus(), 50);
     return;
   }
@@ -1507,6 +1572,15 @@ const actions = {
   "new-plant": newPlantWizard,
   "wiz-back": () => { wiz.step = 1; renderWizard(); },
   "wiz-alt": (d) => { wiz.nick = $("wizNick")?.value ?? wiz.nick; wiz.query = altQuery(wiz.care.alternatives[+d.i]); wiz.showAlts = false; wizLookup(); },
+  "wiz-id-cancel": () => { wiz.identify = null; renderWizard(); },
+  "wiz-id-pick": (d) => {
+    const id = wiz.identify;
+    const c = id?.candidates?.[+d.i];
+    if (!c) return;
+    draftPhoto = id.photo;
+    Object.assign(wiz, { name: c.commonName, query: altQuery(c), identify: null, care: null, step: 2 });
+    if (hasAI() || aiOpen === null) wizLookup(); else renderWizard();
+  },
   "wiz-species-ok": () => { wiz.nick = $("wizNick")?.value ?? wiz.nick; wiz.checked = true; wiz.showAlts = false; renderWizard(); },
   "wiz-species-no": () => {
     wiz.nick = $("wizNick")?.value ?? wiz.nick;
@@ -1754,6 +1828,11 @@ document.addEventListener("input", (e) => {
 
 document.addEventListener("change", async (e) => {
   if (e.target.closest("#plantForm")) formDirty = true;
+  if (e.target.id === "idPhotoInput" && e.target.files[0] && wiz) {
+    const file = e.target.files[0];
+    e.target.value = "";
+    return identifyFromFile(file);
+  }
   if (e.target.id === "photoInput" && e.target.files[0]) {
     draftPhoto = await shrinkPhoto(e.target.files[0]).catch(() => null);
     if (draftPhoto) $("photoPreview").innerHTML = `<img class="thumb" src="${draftPhoto}" alt="" />`;

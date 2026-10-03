@@ -151,7 +151,7 @@ const providers = {
         contents: messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
         generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema, temperature: 0.2, maxOutputTokens: 4000 },
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(22000), // a hung model must not eat the app's whole wait: fall to the next one
     });
     let res = await call();
     if (res.status === 503) { await new Promise((r) => setTimeout(r, 2000)); res = await call(); }
@@ -341,7 +341,7 @@ async function handleCare(request, env, headers, ctx) {
 // One KV document per day: { e: { event: count }, d: [device hashes], ai: { calls, cached, errors, notPlant, ms } }.
 // Anonymous counts only: the app sends event names and a random per-install id (hashed here).
 // Read-modify-write, so two writes at the same instant may lose one count: fine for a family app.
-const EVENTS = ["app_open", "plant_add_ai", "plant_add_manual", "water_done", "water_skip_rain", "feed_done", "task_done", "upgrade_done", "ai_fill_edit"];
+const EVENTS = ["app_open", "plant_add_ai", "plant_add_manual", "water_done", "water_skip_rain", "feed_done", "task_done", "upgrade_done", "ai_fill_edit", "plant_identify"];
 const statsKey = (day = new Date().toISOString().slice(0, 10)) => `stats:${day}`;
 async function hashId(id) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`mj:${id}`));
@@ -605,6 +605,69 @@ async function handlePush(request, env, headers, action) {
   return json({ ok: true }, 200, headers);
 }
 
+// ---------- Identify a plant from a photo (Gemini vision) ----------
+const IDENTIFY_SCHEMA = {
+  type: "object",
+  properties: {
+    isPlant: { type: "boolean" },
+    candidates: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          commonName: { type: "string" },
+          species: { type: "string" },
+          confidence: { type: "string", enum: ["alta", "media", "baja"] },
+        },
+        required: ["commonName", "species", "confidence"],
+      },
+    },
+  },
+  required: ["isPlant", "candidates"],
+};
+const IDENTIFY_MAX = 2.5 * 1024 * 1024; // base64 characters; the app sends ~900 px JPEGs
+async function handleIdentify(request, env, headers) {
+  if (!authorized(request, env)) return json({ error: "code" }, 401, headers);
+  const text = await request.text();
+  if (text.length > IDENTIFY_MAX + 2000) return json({ error: "too_big" }, 413, headers);
+  let body;
+  try { body = JSON.parse(text); } catch { return json({ error: "input" }, 400, headers); }
+  const image = String(body.image ?? "");
+  if (!/^[A-Za-z0-9+/=]+$/.test(image) || image.length < 200 || image.length > IDENTIFY_MAX) return json({ error: "input" }, 400, headers);
+  const place = String(body.place ?? "").slice(0, 60);
+  if (!(await takeQuota(request, env))) return json({ error: "limit" }, 429, headers);
+  const prompt = `Identifica la planta de esta foto. Responde en español. Da de 1 a 3 candidatos, del más al menos probable, con su nombre común en español y su nombre científico, y tu seguridad (alta, media o baja). La persona vive en ${place || "España"} (clima mediterráneo): si dudas entre especies, prefiere las comunes en jardines y terrazas de la zona. Si la foto no muestra una planta o no se puede distinguir cuál es, pon isPlant en false o devuelve confianza "baja".`;
+  const t0 = Date.now();
+  for (const spec of chain(env).filter((c) => c.startsWith("gemini"))) {
+    const model = spec.split(":")[1] || env.GEMINI_MODEL;
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY.trim() },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ inline_data: { mime_type: "image/jpeg", data: image } }, { text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json", responseJsonSchema: IDENTIFY_SCHEMA, temperature: 0.1, maxOutputTokens: 800 },
+        }),
+        signal: AbortSignal.timeout(40000),
+      });
+      if (!res.ok) throw new Error(`gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      const out = await res.json();
+      const parsed = JSON.parse(out?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join(""));
+      const candidates = (parsed.candidates ?? []).slice(0, 3).map((c) => ({
+        commonName: String(c.commonName ?? "").slice(0, 60),
+        species: String(c.species ?? "").slice(0, 80),
+        confidence: ["alta", "media", "baja"].includes(c.confidence) ? c.confidence : "baja",
+      })).filter((c) => c.commonName && c.species);
+      await updateStats(env, (doc) => { doc.ai ??= {}; doc.ai.identify = (doc.ai.identify ?? 0) + 1; });
+      console.log("identify ok", spec, Date.now() - t0, "ms");
+      return json({ isPlant: parsed.isPlant !== false && candidates.length > 0, candidates }, 200, headers);
+    } catch (err) {
+      console.error("identify failed", spec, err?.message);
+    }
+  }
+  return json({ error: "ai" }, 502, headers);
+}
+
 export default {
   // 06:00 and 07:00 UTC: whichever is 08:00 in Madrid (summer or winter) sends the daily push.
   async scheduled(event, env, ctx) {
@@ -621,6 +684,7 @@ export default {
     if (pathname === "/calendar" && request.method === "POST") return handleCalendar(request, env, headers, ctx);
     if (pathname === "/event" && request.method === "POST") return handleEvent(request, env, headers);
     if (pathname === "/stats") return handleStats(request, env, headers);
+    if (pathname === "/identify" && request.method === "POST") return handleIdentify(request, env, headers);
     const push = pathname.match(/^\/push\/(subscribe|unsubscribe|test)$/);
     if (push && request.method === "POST") return handlePush(request, env, headers, push[1]);
     const garden = pathname.match(/^\/garden\/([^/]+)$/);

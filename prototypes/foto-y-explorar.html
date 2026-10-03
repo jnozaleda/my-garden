@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foto y explorar</title>
+<style>
+:root{--bg:#000;--card:#1c1c1e;--hair:#38383a;--muted:#8e8e93;--green:#6cc47a;--chip:#2c2c2e;--lilac:#b69cff;--amber:#f0b45a;--red:#ff6b5e;--blue:#5aa9e6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font:15px -apple-system,system-ui,sans-serif;padding:20px 16px}
+h2{font-size:17px;margin:34px 0 10px;color:#fff}h2:first-of-type{margin-top:0}
+.wrap{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:6px}.col{flex:1;min-width:300px;max-width:350px}
+h1{font-size:15px;color:var(--muted);font-weight:600;margin:0 0 6px}.note{color:var(--muted);font-size:13.5px;line-height:1.4;margin:0 0 12px;min-height:60px}
+.sheet{background:#111113;border-radius:22px;padding:16px;min-height:200px}
+.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.head b{font-size:20px}
+.pill{background:var(--chip);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:600}
+.card{background:var(--card);border-radius:16px;padding:12px 14px;margin-bottom:10px}
+svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.input{background:var(--card);border-radius:12px;padding:12px 14px;font-size:16px;display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.input span{flex:1;color:#636366}.input svg{color:var(--green)}
+.btn{display:block;text-align:center;background:var(--green);color:#000;font-weight:700;border-radius:12px;padding:12px;margin-top:10px}
+.btn.sec{background:var(--chip);color:#fff}
+.menu{background:#2c2c2e;border-radius:16px;padding:6px;margin-top:10px}
+.menu div{display:flex;gap:12px;align-items:center;padding:12px;border-radius:12px;font-weight:600}.menu div+div{border-top:.5px solid var(--hair);border-radius:0}
+.menu small{display:block;color:var(--muted);font-weight:400;font-size:12.5px}
+.match{display:flex;gap:12px;align-items:center}.match img{width:84px;height:84px;border-radius:14px;object-fit:cover;flex:none}
+.n{font-weight:700;font-size:16px}.sp{color:var(--muted);font-style:italic;font-size:14px}.credit{font-size:11px;color:#636366;margin-top:4px}
+.ai{color:var(--lilac)}
+.verdict{display:flex;gap:10px;align-items:center;border-radius:14px;padding:11px 12px;margin-bottom:10px}
+.verdict.good{background:#16301f}.verdict.mid{background:#3a2c14}.verdict b{display:block;font-size:15px}.verdict span{font-size:13px;color:#d1d1d6;line-height:1.35}
+.verdict.good svg{color:var(--green)}.verdict.mid svg{color:var(--amber)}
+.fit{display:flex;gap:10px;padding:9px 0;border-top:.5px solid var(--hair);align-items:flex-start}.fit:first-child{border-top:0}
+.fit .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none}
+.ic.ok{background:#16301f;color:var(--green)}.ic.warn{background:#3a2c14;color:var(--amber)}.ic.no{background:#3a1a17;color:var(--red)}.ic svg{width:15px;height:15px}
+.fit b{font-size:14px;display:block}.fit span{font-size:13px;color:var(--muted);line-height:1.35}
+.small{font-size:12.5px;color:var(--muted);line-height:1.4;margin-top:8px}
+.cam{background:#000;border-radius:16px;aspect-ratio:3/4;display:grid;place-items:center;position:relative;overflow:hidden;background:linear-gradient(160deg,#2f6b33,#143518)}
+.cam .ring{width:70%;aspect-ratio:1;border:2px dashed rgba(255,255,255,.6);border-radius:24px;display:grid;place-items:center;color:rgba(255,255,255,.8);font-size:13px;text-align:center;padding:12px}
+.shutter{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:54px;height:54px;border-radius:50%;border:4px solid #fff;background:rgba(255,255,255,.25)}
+.thumbrow{display:flex;gap:12px;align-items:center}.thumbrow img{width:64px;height:64px;border-radius:12px;object-fit:cover}
+.conf{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px}.conf.hi{background:#16301f;color:var(--green)}.conf.lo{background:#3a2c14;color:var(--amber)}
+.alts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.alt{background:var(--chip);border-radius:12px;overflow:hidden}.alt img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}.alt div{padding:6px 8px;font-size:13px}.alt b{display:block}.alt i{color:var(--muted);font-size:12px}
+.tips{color:#d1d1d6;font-size:13.5px;line-height:1.5;padding-left:18px;margin:6px 0 0}
+</style></head><body>
+
+<h2>1 · Foto: identificar la planta al darla de alta</h2>
+<div class="wrap">
+ <div class="col"><h1>A · Botón de cámara en el paso 1</h1>
+  <p class="note">Al lado del nombre aparece «Hacer foto». Si no sabes cómo se llama, la sacas y la IA propone la especie. Si lo sabes, escribes el nombre como siempre.</p>
+  <div class="sheet"><div class="head"><b>Nueva planta</b><span class="pill">Cancelar</span></div>
+   <div class="lbl" style="font-weight:700;margin-bottom:8px">¿Qué planta es?</div>
+   <div class="input"><span>Olivo, limonero, geranio…</span></div>
+   <div class="card" style="display:flex;gap:12px;align-items:center;padding:14px"><svg viewBox="0 0 24 24" style="width:26px;height:26px;color:var(--green)"><path d="M5 7h1a2 2 0 0 0 2-2 1 1 0 0 1 1-1h6a1 1 0 0 1 1 1 2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/></svg><div><b>¿No sabes cómo se llama?</b><div class="small" style="margin:2px 0 0">Hazle una foto o elige una de tu galería.</div></div></div>
+   <span class="btn sec" style="margin-top:0">Siguiente</span></div></div>
+ <div class="col"><h1>B · Visor con consejos</h1>
+  <p class="note">Antes de disparar, una guía para que la foto sirva: una hoja y una flor, de cerca, con luz natural. Se puede usar la cámara o la galería.</p>
+  <div class="sheet"><div class="head"><b>Foto de la planta</b><span class="pill">Cerrar</span></div>
+   <div class="cam"><div class="ring">Encuadra una hoja o una flor, de cerca</div><span class="shutter"></span></div>
+   <div class="small" style="text-align:center">O <b style="color:var(--green)">elegir de la galería</b></div></div></div>
+ <div class="col"><h1>C · Resultado</h1>
+  <p class="note">La foto sirve a la vez de foto de la planta. Muestra la propuesta con su grado de seguridad y las alternativas con foto, como en el alta por nombre.</p>
+  <div class="sheet"><div class="head"><b>¿Es esta?</b><span class="pill">Atrás</span></div>
+   <div class="card"><div class="thumbrow"><img src="https://inaturalist-open-data.s3.amazonaws.com/photos/282403493/medium.jpg" alt=""><div><div class="n">Buganvilla <span class="ai">✦</span><span class="conf hi">Muy probable</span></div><div class="sp">Bougainvillea glabra</div><div class="small" style="margin:2px 0 0">Tu foto → foto de la planta</div></div></div></div>
+   <div class="small" style="margin:0 2px 4px">También podría ser:</div>
+   <div class="alts"><div class="alt"><img src="https://inaturalist-open-data.s3.amazonaws.com/photos/374961404/medium.jpg" alt=""><div><b>Plumeria</b><i>Plumeria rubra</i></div></div><div class="alt"><img src="https://inaturalist-open-data.s3.amazonaws.com/photos/185690403/medium.jpg" alt=""><div><b>Jazmín común</b><i>Jasminum officinale</i></div></div></div>
+   <span class="btn">Sí, es esta</span></div></div>
+ <div class="col"><h1>D · Si no la reconoce</h1>
+  <p class="note">Sin culpar a nadie: consejos para repetir la foto o la opción de escribir el nombre a mano.</p>
+  <div class="sheet"><div class="head"><b>No la tengo clara</b><span class="pill">Atrás</span></div>
+   <div class="card"><b>La foto no me basta para saber qué planta es <span class="conf lo">Poco seguro</span></b>
+   <ul class="tips"><li>Acércate a una hoja o a una flor</li><li>Con luz natural, sin sombra encima</li><li>Una sola planta en el encuadre</li></ul></div>
+   <span class="btn">Hacer otra foto</span><span class="btn sec">Escribir el nombre</span></div></div>
+</div>
+
+<h2>2 · Explorar: mirar una planta sin añadirla</h2>
+<div class="wrap">
+ <div class="col"><h1>A · Dónde está</h1>
+  <p class="note">El botón + pasa a ser un menú con dos opciones. «Explorar» no guarda nada: solo te dice cómo encaja la planta en tu jardín.</p>
+  <div class="sheet"><div class="head"><b>Plantas</b><span class="pill">+</span></div>
+   <div class="menu"><div><svg viewBox="0 0 24 24" style="color:var(--green)"><path d="M12 5v14M5 12h14"/></svg><span>Añadir planta<small>Guardarla en tu jardín</small></span></div><div><svg viewBox="0 0 24 24" style="color:var(--blue)"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span>Explorar una planta<small>Ver si encaja, sin añadirla</small></span></div></div></div></div>
+ <div class="col"><h1>B · Buscar o fotografiar</h1>
+  <p class="note">Mismo buscador del alta, por nombre o por foto. Pensado para usarlo de pie en un vivero.</p>
+  <div class="sheet"><div class="head"><b>Explorar</b><span class="pill">Cerrar</span></div>
+   <div class="input"><span>¿Qué planta estás mirando?</span><svg viewBox="0 0 24 24"><path d="M5 7h1a2 2 0 0 0 2-2 1 1 0 0 1 1-1h6a1 1 0 0 1 1 1 2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"/><circle cx="12" cy="13" r="3"/></svg></div>
+   <div class="small" style="margin:12px 2px 6px;font-weight:700;color:#fff">Vistas hace poco</div>
+   <div class="card" style="padding:8px 12px"><div class="thumbrow"><img src="https://inaturalist-open-data.s3.amazonaws.com/photos/374961404/medium.jpg" alt="" style="width:44px;height:44px"><div><b>Plumeria</b><div class="small" style="margin:0">Encaja con reservas</div></div></div></div>
+   <div class="card" style="padding:8px 12px"><div class="thumbrow"><img src="https://inaturalist-open-data.s3.amazonaws.com/photos/185690403/medium.jpg" alt="" style="width:44px;height:44px"><div><b>Jazmín común</b><div class="small" style="margin:0">Encaja bien</div></div></div></div></div></div>
+ <div class="col"><h1>C · Cómo encaja con tu jardín</h1>
+  <p class="note">Un veredicto corto y los motivos, comparando con tu ubicación, tus zonas y lo que ya tienes. Desde aquí se puede añadir con un toque.</p>
+  <div class="sheet"><div class="head"><b>Plumeria</b><span class="pill">Cerrar</span></div>
+   <div class="match" style="margin-bottom:12px"><img src="https://inaturalist-open-data.s3.amazonaws.com/photos/374961404/medium.jpg" alt=""><div><div class="n">Plumeria rubra <span class="ai">✦</span></div><div class="credit">Foto: szetochunyat_4b24 · iNaturalist</div></div></div>
+   <div class="verdict mid"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg><div><b>Encaja con reservas en Madrid</b><span>Es delicada al frío: mejor en maceta y a cubierto en invierno.</span></div></div>
+   <div class="card">
+    <div class="fit"><span class="ic warn"><svg viewBox="0 0 24 24"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></svg></span><div><b>Frío</b><span>No aguanta heladas. En Madrid baja de 0° unas semanas al año.</span></div></div>
+    <div class="fit"><span class="ic ok"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span><div><b>Agua</b><span>Riego moderado, como tu geranio (cada 4-5 días en otoño).</span></div></div>
+    <div class="fit"><span class="ic ok"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2"/></svg></span><div><b>Sol</b><span>Pleno sol. Encaja en <b>Zona Este</b>; en <b>Norte</b> floraría poco.</span></div></div>
+    <div class="fit"><span class="ic ok"><svg viewBox="0 0 24 24"><path d="M12 21v-9M12 12c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg></span><div><b>Parecidas en tu jardín</b><span>Ya tienes buganvilla, con cuidados casi iguales.</span></div></div>
+   </div>
+   <span class="btn">Añadir a mi jardín</span><span class="btn sec">Cerrar</span>
+   <div class="small">«Añadir» abre el alta con todo ya relleno (no gasta otra consulta de IA).</div></div></div>
+</div>
+
+<h2>Cosas a tener en cuenta</h2>
+<div class="card" style="max-width:760px;line-height:1.55;font-size:14px">
+ <b>Sol y tamaño:</b> hoy la ficha de la IA no dice cuánto sol quiere la planta ni cuánto crece. Hay que añadirlo para que el veredicto sea útil, y las plantas que ya tienes lo traerían al pulsar «Actualizar fichas».<br>
+ <b>Qué sol tiene cada zona:</b> no lo sabemos todavía. Se podría preguntar una vez por zona («Norte: ¿sol, media sombra o sombra?»).<br>
+ <b>El veredicto es una estimación</b> de la IA, no una garantía; se dice así en la pantalla.<br>
+ <b>Cuota de IA:</b> la foto gasta una consulta de visión con Gemini; si Gemini no está disponible, se avisa y se puede escribir el nombre.
+</div>
+
+</body></html>
