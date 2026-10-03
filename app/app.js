@@ -1,12 +1,12 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003b";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261003c";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261003b";
-import { buildICS } from "./calendar.js?v=20261003b";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003b";
+} from "./rules.js?v=20261003c";
+import { buildICS } from "./calendar.js?v=20261003c";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261003c";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -109,7 +109,10 @@ function traits(p) {
   const level = !every ? 0 : every <= 3 ? 3 : every <= 7 ? 2 : 1;
   const drops = level ? `<span class="t-drops" aria-label="Riego ${["", "bajo", "medio", "alto"][level]}">${[1, 2, 3].map((i) => `<span class="${i <= level ? "on" : ""}">${ICONS.droplet}</span>`).join("")}</span>` : "";
   const frost = p.frostSensitive ? `<span class="t-frost" aria-label="Sensible a heladas">${ICONS.snow}</span>` : "";
-  return drops || frost ? `<span class="p-traits">${drops}${frost}</span>` : "";
+  // Light it tolerates as 1–3 suns (shade = 1, partial = 2, full sun = 3); a plant that burns in direct sun is 1.
+  const sunLevel = !p.sunNeed ? 0 : p.sunSensitive ? 1 : { shade: 1, partial: 2, sun: 3 }[p.sunNeed] ?? 0;
+  const suns = sunLevel ? `<span class="t-suns" aria-label="Luz: ${p.sunSensitive ? "sensible al sol directo" : SUN_NEED_LABEL[p.sunNeed]}">${[1, 2, 3].map((i) => `<span class="${i <= sunLevel ? "on" : ""}">${ICONS.sun}</span>`).join("")}</span>` : "";
+  return drops || suns || frost ? `<span class="p-traits">${drops}${suns || frost ? `<span class="t-line">${suns}${frost}</span>` : ""}</span>` : "";
 }
 
 function emptyGarden() {
@@ -203,7 +206,7 @@ function applyCalendar(plant, cal) {
 
 function gardenWeekCard(today) {
   const { plants, log } = state.data;
-  const checks = weatherChecks(plants, state.weather, today);
+  const checks = weatherChecks(plants, state.weather, today, zoneSun());
   const items = groupGardenTasks(monthTasks(plants, log, today));
   if (!checks.length && !items.length) return "";
   const done = items.filter((x) => x.done).length;
@@ -224,7 +227,7 @@ function gardenWeekCard(today) {
 // Ficha: «Este mes» (this plant's tasks + weather checks that name it) and the 12-month calendar.
 function plantMonthCard(p, today) {
   const items = monthTasks([p], state.data.log, today);
-  const checks = weatherChecks(state.data.plants, state.weather, today).filter((c) => c.plantIds.includes(p.id));
+  const checks = weatherChecks(state.data.plants, state.weather, today, zoneSun()).filter((c) => c.plantIds.includes(p.id));
   if (calendarPending.has(p.id)) {
     return `<section class="card"><div class="sec">Este mes</div><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Preparando el calendario del año…</div></section>`;
   }
@@ -665,7 +668,11 @@ const UPGRADES = [
   {
     version: 6,
     label: "luz que necesita y temperatura mínima",
-    apply: (plant, care) => Object.assign(plant, sunFields(care)),
+    apply: (plant, care) => {
+      const f = sunFields(care);
+      if (!plant.sunNeed) { plant.sunNeed = f.sunNeed; plant.sunSensitive = f.sunSensitive; }
+      if (plant.minTemp == null) plant.minTemp = f.minTemp;
+    },
   },
   {
     version: 7,
@@ -926,6 +933,12 @@ function plantForm(id) {
       ${radioSeg("inPot", "Plantada en", p.inPot, [[true, "pot", "Maceta"], [false, "ground", "Suelo"]])}
       ${radioSeg("rainReaches", "La lluvia", p.rainReaches, [[true, "rain", "Le llega"], [false, "umbrella", "A cubierto"]])}
       ${radioSeg("sun", "Sol que recibe", p.sun ?? "", SUN_CHOICES)}
+      ${radioSeg("sunNeed", "Luz que pide la planta", p.sunNeed ?? "", SUN_NEED_CHOICES)}
+      <label class="switch-row">
+        <span>${ICONS.sun}Muy sensible al sol directo</span>
+        <input type="checkbox" role="switch" name="sunSensitive" class="switch-input" ${p.sunSensitive ? "checked" : ""} />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
       ${radioSeg("size", "Tamaño de la planta", p.size ?? "", SIZE_CHOICES)}
       <label class="switch-row">
         <span>${ICONS.snow}Sensible a heladas</span>
@@ -1204,11 +1217,14 @@ async function aiFill(query) {
       f[`s-${k}-feed`].value = care.seasons[k].feed || "";
     }
     f.frostSensitive.checked = care.frostSensitive;
+    const need = form.querySelector(`input[name="sunNeed"][value="${care.sunNeed}"]`);
+    if (need) need.checked = true;
+    if (f.sunSensitive) f.sunSensitive.checked = Boolean(care.sunSensitive);
     // Replace the notes if they're empty or still the AI's previous text (e.g. for another plant).
     if (!f.notes.value.trim() || f.notes.value === form.dataset.aiNotes) f.notes.value = care.notes;
     form.dataset.aiNotes = care.notes;
     form.dataset.aiSnapshot = JSON.stringify(aiSnapshot(care));
-    form.dataset.sunFields = JSON.stringify(sunFields(care));
+    form.dataset.sunFields = JSON.stringify({ minTemp: care.minTemp ?? null });
     form.dataset.tips = JSON.stringify(care.tips ?? null);
     form.dataset.feedTypes = JSON.stringify(care.feedTypes ?? null);
     $("tipsBox").innerHTML = tipsList(care.tips);
@@ -1299,7 +1315,7 @@ function newPlantWizard() {
   wiz = {
     step: 1, name: "", ai: "idle", aiError: "", care: null, touched: {},
     ...PLACE_DEFAULTS, ...store.get("mj_last_place", {}),
-    species: "", seasons: structuredClone(DEFAULT_SEASONS), frostSensitive: false, notes: "", newZone: false, sun: "", size: "medium",
+    species: "", seasons: structuredClone(DEFAULT_SEASONS), frostSensitive: false, notes: "", newZone: false, sun: "", size: "medium", sunNeed: "", sunSensitive: false,
   };
   wiz.autoWater = false;
   renderWizard();
@@ -1527,6 +1543,7 @@ async function exploreFromFile(file) {
 
 // «Zona» = the sun set for its zone in Ajustes.
 const SUN_CHOICES = [["", "pin", "Zona"], ["sun", "sun", "Sol"], ["partial", "cloud", "Media"], ["shade", "umbrella", "Sombra"]];
+const SUN_NEED_CHOICES = [["sun", "sun", "Sol"], ["partial", "cloud", "Media"], ["shade", "umbrella", "Sombra"]];
 const SIZE_CHOICES = [["small", "sprout", "Pequeña"], ["medium", "sprout", "Mediana"], ["large", "sprout", "Grande"]];
 const SIZE_LABEL = { small: "Pequeña", medium: "Mediana", large: "Grande" };
 
@@ -1588,6 +1605,10 @@ function renderWizard() {
     ${segmented("inPot", "Plantada en", [[true, "pot", "Maceta"], [false, "ground", "Suelo"]])}
     ${segmented("rainReaches", "La lluvia", [[true, "rain", "Le llega"], [false, "umbrella", "A cubierto"]])}
     ${segmented("sun", "Sol que recibe", SUN_CHOICES)}
+    ${segmented("sunNeed", "Luz que pide la planta", SUN_NEED_CHOICES)}
+    <button type="button" class="switch-row" role="switch" aria-checked="${wiz.sunSensitive && !busy}" data-action="wiz-set" data-key="sunSensitive" ${lock}>
+      <span>${ICONS.sun}Muy sensible al sol directo</span><span class="switch" aria-hidden="true"></span>
+    </button>
     ${segmented("size", "Tamaño de la planta", SIZE_CHOICES)}
     <button type="button" class="switch-row" role="switch" aria-checked="${wiz.frostSensitive && !busy}" data-action="wiz-set" data-key="frostSensitive" ${lock}>
       <span>${ICONS.snow}Sensible a heladas</span><span class="switch" aria-hidden="true"></span>
@@ -1634,6 +1655,8 @@ async function wizLookup() {
       if (!current.touched[`${k}.${kind}`]) current.seasons[k][kind] = care.seasons[k][kind];
     }
     if (!current.touched.frostSensitive) current.frostSensitive = care.frostSensitive;
+    if (!current.touched.sunNeed) current.sunNeed = care.sunNeed ?? "";
+    if (!current.touched.sunSensitive) current.sunSensitive = Boolean(care.sunSensitive);
     current.notes = care.notes;
     current.tips = care.tips;
     current.feedTypes = care.feedTypes;
@@ -1659,7 +1682,8 @@ function wizSave() {
     seasons: wiz.seasons, rainReaches: wiz.rainReaches, inPot: wiz.inPot,
     frostSensitive: wiz.frostSensitive, autoWater: wiz.autoWater, notes: wiz.notes, tips: wiz.tips, feedTypes: wiz.feedTypes, photo: draftPhoto,
   };
-  if (wiz.ai === "done" && wiz.care) { plant.ai = aiSnapshot(wiz.care); Object.assign(plant, sunFields(wiz.care)); }
+  if (wiz.ai === "done" && wiz.care) { plant.ai = aiSnapshot(wiz.care); plant.minTemp = wiz.care.minTemp ?? null; }
+  if (wiz.sunNeed || wiz.sunSensitive) { plant.sunNeed = wiz.sunNeed || "partial"; plant.sunSensitive = wiz.sunSensitive; }
   plant.sun = wiz.sun || "";
   plant.size = wiz.size || "";
   // With the AI, the calendar (version 4) arrives in the background; by hand, nothing to fetch.
@@ -1736,7 +1760,7 @@ const actions = {
   "wiz-zone": (d) => { wiz.zone = d.zone; wiz.newZone = false; renderWizard(); },
   "wiz-new-zone": () => { wiz.newZone = true; wiz.zone = ""; renderWizard(); },
   "wiz-set": (d) => {
-    wiz[d.key] = d.key === "sun" || d.key === "size" ? d.value : d.key === "frostSensitive" || d.key === "autoWater" ? !wiz[d.key] : d.value === "true";
+    wiz[d.key] = ["sun", "size", "sunNeed"].includes(d.key) ? d.value : ["frostSensitive", "autoWater", "sunSensitive"].includes(d.key) ? !wiz[d.key] : d.value === "true";
     wiz.touched[d.key] = true;
     renderWizard();
   },
@@ -2059,6 +2083,7 @@ document.addEventListener("submit", (e) => {
     sun: f.get("sun") ?? "",
     size: f.get("size") ?? "",
     notes: f.get("notes").trim(),
+    ...(f.get("sunNeed") || f.has("sunSensitive") ? { sunNeed: f.get("sunNeed") || "partial", sunSensitive: f.has("sunSensitive") } : {}),
     photo: draftPhoto,
   };
   withCurrentIntervals(fields);

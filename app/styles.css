@@ -658,3 +658,7 @@ label.link-btn { cursor: pointer; }
 .fit-ic.no { background: #3a1a17; color: #ff6b5e; } .fit-ic.info { background: var(--hairline); color: var(--text-2); }
 .verdict-dot { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
 .verdict-dot.good { color: #6cc47a; } .verdict-dot.mid { color: #f0b45a; } .verdict-dot.bad { color: #ff6b5e; }
+.t-line { display: flex; gap: 6px; align-items: center; }
+.t-suns { display: flex; gap: 1px; color: var(--hairline); }
+.t-suns .on { color: #f0b45a; }
+.t-suns .on circle { fill: currentColor; }

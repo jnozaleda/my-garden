@@ -81,6 +81,16 @@ export function sunFit(need, sensitive, exposure) {
   if (sensitive) return { sun: "no", partial: "warn", shade: "ok" }[exposure];
   return ({ sun: { sun: "ok", partial: "warn", shade: "no" }, partial: { sun: "warn", partial: "ok", shade: "warn" }, shade: { sun: "no", partial: "warn", shade: "ok" } }[need ?? "sun"])[exposure];
 }
+// Frost/cold: the temperature at which this plant starts to suffer, or null if it isn't a worry.
+// Its own minimum (the AI's minTemp); a plant marked sensitive to frost never gets less than 2°.
+export function frostLimit(plant) {
+  const min = Number.isFinite(plant.minTemp) ? plant.minTemp : null;
+  if (plant.frostSensitive) return Math.max(min ?? LIMITS.frostC, LIMITS.frostC);
+  return min;
+}
+// Sun-sensitive: burns in direct sun. Plants from before the light data fall back on the calendar's risk.
+export const sunTender = (plant) => (plant.sunSensitive !== undefined ? Boolean(plant.sunSensitive) : Boolean(plant.risks?.includes("sunburn")));
+
 // One line for the plant sheet when its light doesn't match, or null.
 export function sunAdvice(plant, zoneSun = {}) {
   const exposure = exposureOf(plant, zoneSun);
@@ -135,7 +145,7 @@ export function fitReport(care, plants, zoneSun, season, place) {
 
 // Weather-driven checks for the week, beyond the alerts: rain spells (fungus, snails), cold
 // nights above frost, heat for sun-sensitive plants. Each: { kind, title, text, plantIds }
-export function weatherChecks(plants, weather, today) {
+export function weatherChecks(plants, weather, today, zoneSun = {}) {
   if (!weather) return [];
   const { days, today: t } = weather;
   const recent = days.slice(Math.max(0, t - 2), t + 1);
@@ -152,13 +162,19 @@ export function weatherChecks(plants, weather, today) {
       out.push({ kind: "rain", title: "Tras los días de lluvia", text: `Revisa ${what} en ${names(hit)}.`, plantIds: hit.map((p) => p.id) });
     }
   }
-  const cold = week.find((d) => d.min <= 5 && d.min > LIMITS.frostC);
-  const tender = plants.filter((p) => p.frostSensitive);
-  if (cold && tender.length) {
-    out.push({ kind: "cold", title: `Noches frías ${whenLabel(today, cold.date)} (${Math.round(cold.min)}°)`, text: `Ten a mano protección para ${names(tender)}.`, plantIds: tender.map((p) => p.id) });
+  // Cold nights: within 3° above each plant's own limit (those already in the frost alert are left out).
+  const cool = plants.map((p) => {
+    const lim = frostLimit(p);
+    if (lim == null || week.slice(0, 3).some((d) => d.min <= lim)) return null;
+    const d = week.find((x) => x.min > lim && x.min <= lim + 3);
+    return d && { p, d };
+  }).filter(Boolean);
+  if (cool.length) {
+    const first = cool.reduce((a, h) => (h.d.date < a.date ? h.d : a), cool[0].d);
+    out.push({ kind: "cold", title: `Noches frías ${whenLabel(today, first.date)} (${Math.round(first.min)}°)`, text: `Ten a mano protección para ${names(cool.map((h) => h.p))}.`, plantIds: cool.map((h) => h.p.id) });
   }
   const hot = week.find((d) => d.max >= LIMITS.heatC);
-  const sunny = plants.filter((p) => p.risks?.includes("sunburn"));
+  const sunny = plants.filter((p) => sunTender(p) && exposureOf(p, zoneSun) !== "shade");
   if (hot && sunny.length) {
     out.push({ kind: "heat", title: `Calor ${whenLabel(today, hot.date)} (${Math.round(hot.max)}°)`, text: `Da sombra en las horas centrales a ${names(sunny)}.`, plantIds: sunny.map((p) => p.id) });
   }
@@ -327,11 +343,18 @@ export function weatherAlerts(plants, weather, today) {
   if (!o) return [];
   const alerts = [];
   const names = (list) => list.map(plantLabel).join(", ");
-  if (o.frost) {
-    const sensitive = plants.filter((p) => p.frostSensitive);
+  // Per plant: the next 3 days against its own limit (frostLimit), not one fixed temperature.
+  const upcoming = weather.days.slice(weather.today, weather.today + 3);
+  const hits = plants.map((p) => {
+    const lim = frostLimit(p);
+    const d = lim == null ? null : upcoming.find((x) => x.min <= lim);
+    return d && { p, d };
+  }).filter(Boolean);
+  if (hits.length || o.frost) {
+    const worst = hits.length ? hits.reduce((a, h) => (h.d.min < a.min ? h.d : a), hits[0].d) : o.frost;
     alerts.push({
-      level: "danger", icon: "🥶", title: `Helada ${whenLabel(today, o.frost.date)} (${Math.round(o.frost.min)}°)`,
-      text: sensitive.length ? `Protege o resguarda: ${names(sensitive)}.` : "Revisa las plantas más delicadas.",
+      level: "danger", icon: "🥶", title: `${worst.min <= 0 ? "Helada" : "Frío"} ${whenLabel(today, worst.date)} (${Math.round(worst.min)}°)`,
+      text: hits.length ? `Protege o resguarda: ${names(hits.map((h) => h.p))}.` : "Revisa las plantas más delicadas.",
     });
   }
   if (o.heatwave) {

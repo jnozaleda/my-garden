@@ -561,7 +561,7 @@ function dailyMessage(garden, weather, today, lat) {
   const plants = garden.plants ?? [];
   const tasks = dueTasks(plants, garden.log ?? [], weather, today, lat, 0).filter((t) => t.advice?.kind !== "skip");
   const alerts = weatherAlerts(plants, weather, today);
-  const checks = weatherChecks(plants, weather, today).filter((c) => c.title.startsWith("Riego automático") || c.title.startsWith("Calor: revisa"));
+  const checks = weatherChecks(plants, weather, today, garden.zoneSun ?? {}).filter((c) => c.title.startsWith("Riego automático") || c.title.startsWith("Calor: revisa"));
   const lines = [];
   const by = (type) => tasks.filter((t) => t.type === type).map((t) => plantLabel(t.plant));
   const list = (names) => (names.length > 4 ? `${names.slice(0, 4).join(", ")} y ${names.length - 4} más` : names.join(", ").replace(/, ([^,]*)$/, " y $1"));
