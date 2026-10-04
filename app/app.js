@@ -1,12 +1,13 @@
 // Mi Jardín — plant inventory, care log and weather-aware reminders. Plain template strings,
 // data in localStorage (phase 1: this device only). Actions are wired by data-action attributes.
 
-import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261004b";
+import { fetchWeather, searchCities, weatherKind } from "./weather.js?v=20261004c";
 import {
   CARE, SEASONS, SEASON_LABEL, dueTasks, upcomingTasks, monthTasks, weatherChecks, taskWindow, weatherAlerts, nextDue, daysBetween, intervalFor, seasonOf, nextSeasonStart, irrigated, plantLabel, groupGardenTasks, SUN_LABEL, SUN_NEED_LABEL, exposureOf, sunAdvice, fitReport,
-} from "./rules.js?v=20261004b";
-import { buildICS } from "./calendar.js?v=20261004b";
-import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261004b";
+} from "./rules.js?v=20261004c";
+import { buildICS } from "./calendar.js?v=20261004c";
+import { scrubPlant } from "./clean.js?v=20261004c";
+import { mergeGardens, gardenDoc, hashesOf, stampChanges, docHash, newKey, formatKey, parseKey, fetchGarden, putGarden, needsPush } from "./sync.js?v=20261004c";
 
 const DEFAULT_LOC = { name: "Madrid", lat: 40.4168, lon: -3.7038 };
 // Backend (MiJardin/worker): fills a plant's care sheet with AI. Needs the access code from Ajustes.
@@ -30,6 +31,8 @@ const state = {
   weather: null,
   weatherError: false,
 };
+
+state.data.plants.forEach(scrubPlant);
 
 // Sync bookkeeping (see «Sync» below): what each plant/log entry looked like at the last save.
 let syncHashes = hashesOf(state.data);
@@ -418,6 +421,7 @@ function applyRemote(remote) {
   const before = docHash(state.data);
   const merged = mergeGardens(gardenDoc(state.data), gardenDoc(remote));
   state.data = { ...state.data, ...merged };
+  state.data.plants.forEach(scrubPlant);
   syncHashes = hashesOf(state.data);
   for (const p of state.data.plants) p.irrigationOff = Boolean(p.autoWater && (state.data.pausedZones ?? []).includes(p.zone || ""));
   store.set("mj_data", state.data);
@@ -558,7 +562,7 @@ function shareGardenSheet(message = null, busy = false) {
     <p>Crea un enlace para que otra persona vea tus plantas: fotos, zonas y cuidados. <b>Solo ver</b>: no puede cambiar nada y no gasta IA.</p>
     <ul class="id-tips"><li>Es una <b>copia de hoy</b>: si luego cambias algo, no se actualiza (crea otro enlace).</li><li>No incluye tus notas, el historial ni tu ubicación.</li><li>Caduca a los 90 días.</li></ul>
     ${message ? `<p class="ai-status warn">${esc(message)}</p>` : ""}
-    ${gardenShare ? `<input class="big-input key-input" readonly value="${esc(gardenShare.link)}" onfocus="this.select()" />
+    ${gardenShare ? `<input class="big-input key-input select-on-focus" readonly value="${esc(gardenShare.link)}" />
       <p class="muted small">Copia del ${esc(fmtDate(localToday()))} · caduca el ${esc(fmtDate(new Date(gardenShare.expires).toISOString().slice(0, 10)))}</p>
       <div class="two-btns"><button class="btn secondary" data-action="share-garden-copy">Copiar enlace</button><button class="btn" data-action="share-garden-send">Compartir</button></div>`
       : n ? `<button class="btn block" data-action="share-garden-create" ${busy ? "disabled aria-busy=\"true\"" : ""}>${busy ? "Creando…" : `Crear enlace con mis ${n === 1 ? "planta" : `${n} plantas`}`}</button>` : `<p class="muted">Aún no tienes plantas que compartir.</p>`}`);
@@ -571,7 +575,7 @@ const plantPills = (p) => [
   [p.inPot ? "pot" : "ground", p.inPot ? "Maceta" : "Suelo"],
   [p.rainReaches ? "rain" : "umbrella", p.rainReaches ? "Le llega la lluvia" : "A cubierto"],
   p.autoWater ? ["drip", "Riego automático"] : null,
-  p.size ? ["sprout", `Tamaño ${SIZE_LABEL[p.size].toLowerCase()}`] : null,
+  p.size ? ["sprout", `Tamaño ${(SIZE_LABEL[p.size] ?? "").toLowerCase()}`] : null,
 ].filter(Boolean);
 function viewGardenSheet() {
   const v = viewing;
@@ -605,7 +609,7 @@ async function openShared(id) {
   try { const res = await fetch(`${API}/share/${id}`, { signal: AbortSignal.timeout(20000) }); if (res.ok) doc = await res.json(); } catch {}
   if (!doc) return openSheet(`<div class="sheet-head"><h2>Compartido contigo</h2><button class="btn small secondary" data-action="close">Cerrar</button></div><p class="ai-status warn">Este enlace ha caducado o no existe. Pídele a quien te lo envió que cree otro.</p>`);
   if (doc.kind === "garden") {
-    viewing = { plants: doc.data.plants, zoneSun: doc.data.zoneSun ?? {}, at: doc.at, expires: doc.expires };
+    viewing = { plants: doc.data.plants.map(scrubPlant), zoneSun: doc.data.zoneSun ?? {}, at: doc.at, expires: doc.expires };
     return viewGardenSheet();
   }
   const { care, calendar, refPhoto: ph, photo, place } = doc.data;
@@ -734,6 +738,7 @@ function usageSheet() {
     <p class="group-foot">Recuentos anónimos: sin nombres de plantas, notas, ubicación ni datos personales. Cada instalación cuenta como un dispositivo. Los datos empiezan el 2 de octubre de 2026.</p>`, "usage");
 }
 // Tap or hover a bar to read its day.
+document.addEventListener("focusin", (e) => { if (e.target.classList?.contains("select-on-focus")) e.target.select(); });
 document.addEventListener("pointerover", (e) => { const b = e.target.closest?.(".u-bar"); if (b && $("usageTip")) $("usageTip").textContent = b.getAttribute("aria-label"); });
 document.addEventListener("focusin", (e) => { const b = e.target.closest?.(".u-bar"); if (b && $("usageTip")) $("usageTip").textContent = b.getAttribute("aria-label"); });
 
@@ -1054,13 +1059,13 @@ function plantSheet(id) {
     p.autoWater ? ["drip", p.irrigationOff ? "Riego automático (pausado)" : "Riego automático"] : null,
     p.sunNeed ? [LIGHT_ICON[p.sunNeed], `Pide ${SUN_NEED_LABEL[p.sunNeed]}`] : null,
     exposureOf(p, zoneSun()) ? [LIGHT_ICON[exposureOf(p, zoneSun())], `Recibe ${SUN_LABEL[exposureOf(p, zoneSun())].toLowerCase()}`] : null,
-    p.size ? ["sprout", `Tamaño ${SIZE_LABEL[p.size].toLowerCase()}`] : null,
+    p.size ? ["sprout", `Tamaño ${(SIZE_LABEL[p.size] ?? "").toLowerCase()}`] : null,
   ].filter(Boolean);
   const sunWarn = sunAdvice(p, zoneSun());
   const LOG_ICON = { water: "droplet", feed: "flask", prune: "scissors", treat: "bug", note: "notes", task: "check" };
   openSheet(`
     <div class="sheet-head"><h2>${esc(plantLabel(p))}</h2><div class="row"><button class="btn small secondary icon-btn" data-action="dup-plant" data-id="${p.id}" aria-label="Duplicar planta" title="Duplicar">${ICONS.copy}</button><button class="btn small secondary" data-action="edit-plant" data-id="${p.id}">Editar</button><button class="btn small secondary" data-action="close">Cerrar</button></div></div>
-    ${p.photo ? `<img class="hero-photo" src="${p.photo}" alt="" />` : p.refPhoto ? `<figure class="ref-photo"><img class="hero-photo" src="${esc(p.refPhoto.url)}" alt="" /><figcaption>Foto de referencia · ${esc(p.refPhoto.credit)}</figcaption></figure>` : ""}
+    ${p.photo ? `<img class="hero-photo" src="${esc(p.photo)}" alt="" />` : p.refPhoto ? `<figure class="ref-photo"><img class="hero-photo" src="${esc(p.refPhoto.url)}" alt="" /><figcaption>Foto de referencia · ${esc(p.refPhoto.credit)}</figcaption></figure>` : ""}
     ${p.species || p.zone || p.nick ? `<p class="muted">${p.nick ? `${esc(p.name)} · ` : ""}${p.species ? `<em>${esc(p.species)}</em>${aiMark(isAiValue(p, "species"))}` : ""}${p.species && p.zone ? " · " : ""}${esc(p.zone)}</p>` : ""}
     <div class="traits">${traits.map(([icon, label]) => `<span class="trait">${ICONS[icon]}${label}</span>`).join("")}</div>
     ${sunWarn ? `<p class="sun-warn ${sunWarn.level}">${ICONS.sun}${esc(sunWarn.text)}</p>` : ""}
@@ -1168,7 +1173,7 @@ function seasonTable(seasons, { form = false, busy = false, aiCells = new Set() 
   const now = seasonOf(localToday(), here().lat);
   const cell = (k, kind, value) => {
     const attrs = form ? `name="s-${k}-${kind}"` : `data-season="${k}" data-kind="${kind}"`;
-    const shown = busy ? "" : kind === "feed" ? value || "" : value;
+    const shown = busy ? "" : Number(value) || "";
     const cls = [busy ? "skel" : "", aiCells.has(`${k}.${kind}`) ? "ai" : ""].join(" ");
     return `<label class="st-cell ${cls}"><input type="number" ${attrs} min="${kind === "water" ? 1 : 0}" max="${kind === "water" ? 60 : 365}" inputmode="numeric" value="${shown}" placeholder="${busy ? "" : kind === "feed" ? "No" : ""}" aria-label="${kind === "water" ? "Regar" : "Abonar"} en ${SEASON_LABEL[k].toLowerCase()}, días" ${busy ? "disabled" : ""} /><span>d</span></label>`;
   };
@@ -1687,7 +1692,7 @@ function exploreSheet() {
   const LV = { ok: "check", warn: "alert", no: "x", info: "pin" };
   const hero = e.photo ?? ph?.url;
   const pills = [
-    care.frostSensitive || care.minTemp != null ? ["snow", care.frostSensitive ? `Sensible a heladas${care.minTemp != null ? ` · mín. ${care.minTemp}°` : ""}` : `Aguanta hasta ${care.minTemp}°`] : null,
+    care.frostSensitive || care.minTemp != null ? ["snow", care.frostSensitive ? `Sensible a heladas${care.minTemp != null ? ` · mín. ${Number(care.minTemp)}°` : ""}` : `Aguanta hasta ${Number(care.minTemp)}°`] : null,
     [LIGHT_ICON[care.sunSensitive ? "shade" : care.sunNeed ?? "sun"], care.sunSensitive ? "Sensible al sol directo" : `Pide ${SUN_NEED_LABEL[care.sunNeed ?? "sun"]}`],
     care.plantIn ? [care.plantIn === "suelo" ? "ground" : "pot", PLANT_IN[care.plantIn]] : null,
     care.windSensitive ? ["wind", "Teme el viento"] : null,
@@ -1728,7 +1733,7 @@ function exploreSheet() {
     <p class="muted small">Es una estimación de la IA, no una garantía. «Añadir» abre el alta ya rellena.</p>
     <div class="sheet-actions two-btns"><button class="btn secondary" data-action="wish-toggle" id="wishBtn">${wishLabel(care.species)}</button><button class="btn" data-action="explore-add">Añadir a mi jardín</button></div>`);
 }
-const seasonReadCells = (seasons, now) => SEASONS.map((k) => `<span class="st-name ${k === now ? "now" : ""}">${ICONS[SEASON_ICON[k]]}${SEASON_LABEL[k]}</span><span class="sr-cell">${seasons[k].water} d</span><span class="sr-cell">${seasons[k].feed ? `${seasons[k].feed} d` : "No"}</span>`).join("");
+const seasonReadCells = (seasons, now) => SEASONS.map((k) => `<span class="st-name ${k === now ? "now" : ""}">${ICONS[SEASON_ICON[k]]}${SEASON_LABEL[k]}</span><span class="sr-cell">${Number(seasons[k].water) || 0} d</span><span class="sr-cell">${Number(seasons[k].feed) ? `${Number(seasons[k].feed)} d` : "No"}</span>`).join("");
 // The year calendar of the explored plant (same grid as the plant sheet); it arrives after the rest.
 function exploreCalendar(e) {
   if (e.calendar === undefined) return `<section class="card"><div class="sec">Calendario del año</div><div class="ai-step"><span class="spinner" aria-hidden="true"></span>Preparando el calendario…</div></section>`;
@@ -2176,6 +2181,7 @@ const actions = {
     if ($("joinReplace")?.checked) {
       store.set("mj_backup_before_join", state.data);
       state.data = { ...state.data, ...gardenDoc(remote) };
+      state.data.plants.forEach(scrubPlant);
       syncHashes = hashesOf(state.data);
       store.set("mj_data", state.data);
     } else {
@@ -2339,6 +2345,7 @@ document.addEventListener("change", async (e) => {
       const data = JSON.parse(await e.target.files[0].text());
       if (!Array.isArray(data.plants) || !Array.isArray(data.log)) throw new Error("formato");
       if (!confirm(`Importar ${data.plants.length} plantas? Sustituye lo que hay ahora en este dispositivo.`)) return;
+      data.plants.forEach(scrubPlant);
       state.data = data; save(); render();
     } catch { alert("Ese archivo no es una copia de Mi Jardín."); }
     e.target.value = "";
